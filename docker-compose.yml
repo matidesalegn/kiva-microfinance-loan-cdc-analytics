@@ -1,0 +1,254 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------
+  # 1. OLTP Database: PostgreSQL (Source)
+  # ----------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: kiva_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kiva_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kiva_password}
+      POSTGRES_DB: ${POSTGRES_DB:-kiva_oltp}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    # Command ensures logical replication is enabled for Debezium CDC
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4"]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./config/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kiva_admin} -d ${POSTGRES_DB:-kiva_oltp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ----------------------------------------------------
+  # 2. Event Stream: Redpanda (Lightweight Kafka Alternative)
+  # ----------------------------------------------------
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.2.19
+    container_name: kiva_redpanda
+    command:
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --reserve-memory
+      - 0M
+      - --overprovisioned
+      - --kafka-addr
+      - "PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092"
+      - --advertise-kafka-addr
+      - "PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092"
+      - --pandaproxy-addr
+      - "0.0.0.0:8082"
+      - --advertise-pandaproxy-addr
+      - "localhost:8082"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    ports:
+      - "9092:9092"
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ----------------------------------------------------
+  # 3. Change Data Capture: Debezium Connector
+  # ----------------------------------------------------
+  debezium:
+    image: quay.io/debezium/connect:2.5
+    container_name: kiva_debezium
+    environment:
+      BOOTSTRAP_SERVERS: redpanda:29092
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: my_connect_configs
+      OFFSET_STORAGE_TOPIC: my_connect_offsets
+      STATUS_STORAGE_TOPIC: my_connect_statuses
+      # Ensuring JSON structure is clean for ClickHouse
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ----------------------------------------------------
+  # 4. OLAP Data Warehouse: ClickHouse
+  # ----------------------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: kiva_clickhouse
+    ports:
+      - "8123:8123" # HTTP port
+      - "9000:9000" # Native TCP port
+      - "9363:9363" # Prometheus metrics port
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-kiva_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-kiva_password}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - ch_data:/var/lib/clickhouse
+      - ./config/clickhouse_init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./config/clickhouse_prometheus.xml:/etc/clickhouse-server/config.d/prometheus.xml
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ----------------------------------------------------
+  # 5. Transformation: dbt
+  # ----------------------------------------------------
+  dbt:
+    image: python:3.11-slim
+    container_name: kiva_dbt
+    # Install dbt-clickhouse on boot (Python 3.11 avoids the mashumaro bug entirely)
+    command: ["sh", "-c", "pip install dbt-clickhouse>=1.7.0 mashumaro==3.13.1 && sleep infinity"]
+    volumes:
+      - ./dbt_project:/usr/app
+      - ./dbt_project/profiles.yml:/root/.dbt/profiles.yml
+    ports:
+      - "8081:8081"
+    working_dir: /usr/app
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ----------------------------------------------------
+  # 6. Orchestration: Dagster
+  # ----------------------------------------------------
+  dagster:
+    image: python:3.11-slim
+    container_name: kiva_dagster
+    command: >
+      sh -c "pip install -r src/requirements.txt && 
+      dagster dev -h 0.0.0.0 -p 3000 -f dagster_orchestration/definitions.py"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/opt/dagster/app
+    working_dir: /opt/dagster/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ----------------------------------------------------
+  # 7. Observability: Prometheus
+  # ----------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: kiva_prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ----------------------------------------------------
+  # 8. Observability: Grafana
+  # ----------------------------------------------------
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: kiva_grafana
+    ports:
+      - "3001:3000" # Mapped to 3001 to avoid conflicting with Dagster
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-kiva}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ----------------------------------------------------
+  # 9. Observability: Redpanda Console
+  # ----------------------------------------------------
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.4.5
+    container_name: kiva_redpanda_console
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ----------------------------------------------------
+  # 10. Observability: Debezium UI
+  # ----------------------------------------------------
+  debezium-ui:
+    image: quay.io/debezium/debezium-ui:2.5
+    container_name: kiva_debezium_ui
+    ports:
+      - "8084:8080"
+    environment:
+      KAFKA_CONNECT_URIS: http://debezium:8083
+    depends_on:
+      debezium:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  pg_data:
+  ch_data:
+  redpanda_data:
+  grafana_data:
