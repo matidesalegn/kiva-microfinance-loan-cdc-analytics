@@ -60,4 +60,4 @@ jobs:
 
       - name: Validate dbt Syntax & Models
         run: |
-          dbt parse --project-dir dbt_project
+          dbt parse --project-dir dbt_project --profiles-dir dbt_project
