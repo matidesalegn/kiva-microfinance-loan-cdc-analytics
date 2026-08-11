@@ -24,7 +24,10 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install flake8 pytest requests psycopg
+          # -r src/requirements-cdc-monitor.txt covers requests/psycopg/prometheus-client
+          # in one place, so this can't silently drift out of sync with what
+          # src/cdc_monitor.py (imported by tests/test_cdc_monitor.py) actually needs.
+          pip install flake8 pytest -r src/requirements-cdc-monitor.txt
 
       - name: Code Quality & Linting Check (flake8)
         run: |
