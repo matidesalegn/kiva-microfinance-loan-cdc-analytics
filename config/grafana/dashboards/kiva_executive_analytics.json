@@ -1,0 +1,329 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "-- Grafana --"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": 1617419185471499,
+    "liveNow": false,
+    "panels": [
+        {
+            "datasource": {
+                "type": "vertamedia-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "blue",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "currencyUSD"
+                }
+            },
+            "gridPos": {
+                "h": 6,
+                "w": 8,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "vertamedia-clickhouse-datasource",
+                        "uid": "PDEE91DDB90597936"
+                    },
+                    "dateTimeType": "DATETIME",
+                    "extrapolate": true,
+                    "format": "table",
+                    "formatted": true,
+                    "query": "SELECT sum(funded_amount) AS total_funded FROM analytics.int_loans_enriched",
+                    "rawQuery": "SELECT sum(funded_amount) AS total_funded FROM analytics.int_loans_enriched",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Capital Disbursed ($)",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "vertamedia-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "percent"
+                }
+            },
+            "gridPos": {
+                "h": 6,
+                "w": 8,
+                "x": 8,
+                "y": 0
+            },
+            "id": 2,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "vertamedia-clickhouse-datasource",
+                        "uid": "PDEE91DDB90597936"
+                    },
+                    "dateTimeType": "DATETIME",
+                    "extrapolate": true,
+                    "format": "table",
+                    "formatted": true,
+                    "query": "SELECT round(avg(funding_percentage), 2) AS avg_funding_rate FROM analytics.int_loans_enriched",
+                    "rawQuery": "SELECT round(avg(funding_percentage), 2) AS avg_funding_rate FROM analytics.int_loans_enriched",
+                    "refId": "A"
+                }
+            ],
+            "title": "Average Funding Rate (%)",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "vertamedia-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "purple",
+                                "value": 0
+                            }
+                        ]
+                    }
+                }
+            },
+            "gridPos": {
+                "h": 6,
+                "w": 8,
+                "x": 16,
+                "y": 0
+            },
+            "id": 3,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "vertamedia-clickhouse-datasource",
+                        "uid": "PDEE91DDB90597936"
+                    },
+                    "dateTimeType": "DATETIME",
+                    "extrapolate": true,
+                    "format": "table",
+                    "formatted": true,
+                    "query": "SELECT count(DISTINCT loan_id) AS total_entrepreneurs FROM analytics.int_loans_enriched",
+                    "rawQuery": "SELECT count(DISTINCT loan_id) AS total_entrepreneurs FROM analytics.int_loans_enriched",
+                    "refId": "A"
+                }
+            ],
+            "title": "Entrepreneurs Supported",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "vertamedia-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "unit": "currencyUSD"
+                }
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 6
+            },
+            "id": 4,
+            "options": {
+                "displayMode": "lcd",
+                "orientation": "horizontal",
+                "reduceOptions": {
+                    "calcs": [],
+                    "fields": "",
+                    "values": true
+                },
+                "showUnfilled": true
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "vertamedia-clickhouse-datasource",
+                        "uid": "PDEE91DDB90597936"
+                    },
+                    "dateTimeType": "DATETIME",
+                    "extrapolate": true,
+                    "format": "table",
+                    "formatted": true,
+                    "query": "SELECT sector, sum(funded_amount) AS total_funded FROM analytics.int_loans_enriched GROUP BY sector ORDER BY total_funded DESC LIMIT 8",
+                    "rawQuery": "SELECT sector, sum(funded_amount) AS total_funded FROM analytics.int_loans_enriched GROUP BY sector ORDER BY total_funded DESC LIMIT 8",
+                    "refId": "A"
+                }
+            ],
+            "title": "Capital Distribution by Industry Sector ($)",
+            "type": "bargauge"
+        },
+        {
+            "datasource": {
+                "type": "vertamedia-clickhouse-datasource",
+                "uid": "PDEE91DDB90597936"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "unit": "currencyUSD"
+                }
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 6
+            },
+            "id": 5,
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "right",
+                    "showLegend": true,
+                    "values": [
+                        "value",
+                        "percent"
+                    ]
+                },
+                "pieType": "donut",
+                "reduceOptions": {
+                    "calcs": [],
+                    "fields": "",
+                    "values": true
+                },
+                "tooltip": {
+                    "mode": "single"
+                }
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "vertamedia-clickhouse-datasource",
+                        "uid": "PDEE91DDB90597936"
+                    },
+                    "dateTimeType": "DATETIME",
+                    "extrapolate": true,
+                    "format": "table",
+                    "formatted": true,
+                    "query": "SELECT country, sum(funded_amount) AS total_funded FROM analytics.int_loans_enriched GROUP BY country ORDER BY total_funded DESC LIMIT 8",
+                    "rawQuery": "SELECT country, sum(funded_amount) AS total_funded FROM analytics.int_loans_enriched GROUP BY country ORDER BY total_funded DESC LIMIT 8",
+                    "refId": "A"
+                }
+            ],
+            "title": "Geographical Capital Allocation by Country ($)",
+            "type": "piechart"
+        }
+    ],
+    "preload": false,
+    "refresh": "10s",
+    "schemaVersion": 42,
+    "time": {
+        "from": "now-30m",
+        "to": "now"
+    },
+    "timezone": "browser",
+    "title": "Kiva Microfinance Executive Loan Analytics",
+    "uid": "exec_analytics",
+    "version": 4
+}
