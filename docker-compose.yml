@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # ----------------------------------------------------
   # 1. OLTP Database: PostgreSQL (Source)
@@ -100,6 +98,35 @@ services:
           memory: 512M
 
   # ----------------------------------------------------
+  # 3b. CDC Connector Auto-Registration (one-shot init job)
+  # ----------------------------------------------------
+  # Renders config/debezium_postgres_source.json.template with the live .env
+  # credentials and POSTs it to Kafka Connect. This is what makes `docker compose
+  # up -d` alone sufficient to bring the pipeline to a working state — no manual
+  # curl step required.
+  connector-registrar:
+    image: alpine:3.20
+    container_name: kiva_connector_registrar
+    environment:
+      DEBEZIUM_URL: http://debezium:8083
+      DEBEZIUM_CONNECTOR_NAME: kiva-postgres-connector
+      POSTGRES_USER: ${POSTGRES_USER:-kiva_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kiva_password}
+      POSTGRES_DB: ${POSTGRES_DB:-kiva_oltp}
+    volumes:
+      - ./config/debezium_postgres_source.json.template:/config/debezium_postgres_source.json.template:ro
+      - ./scripts/register_connector.sh:/register_connector.sh:ro
+    entrypoint: ["sh", "/register_connector.sh"]
+    restart: "no"
+    depends_on:
+      debezium:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # ----------------------------------------------------
   # 4. OLAP Data Warehouse: ClickHouse
   # ----------------------------------------------------
   clickhouse:
@@ -137,7 +164,10 @@ services:
     image: python:3.11-slim
     container_name: kiva_dbt
     # Install dbt-clickhouse on boot (Python 3.11 avoids the mashumaro bug entirely)
-    command: ["sh", "-c", "pip install dbt-clickhouse>=1.7.0 mashumaro==3.13.1 && sleep infinity"]
+    # NOTE: the version specifier is quoted below -- unquoted, `>` is parsed by
+    # sh as output redirection, silently writing pip's stdout to a file
+    # literally named `=1.7.0` in the bind-mounted /usr/app (dbt_project/).
+    command: ["sh", "-c", "pip install 'dbt-clickhouse>=1.7.0' mashumaro==3.13.1 && sleep infinity"]
     volumes:
       - ./dbt_project:/usr/app
       - ./dbt_project/profiles.yml:/root/.dbt/profiles.yml
@@ -171,10 +201,72 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+      connector-registrar:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
           memory: 512M
+
+  # ----------------------------------------------------
+  # 6b. CDC Reconciliation & Lag Monitor
+  # ----------------------------------------------------
+  # Custom exporter that continuously cross-checks Postgres vs ClickHouse row
+  # counts and measures end-to-end CDC freshness lag, exposing both (plus
+  # Debezium connector task health) as Prometheus metrics on :9200/metrics.
+  cdc-monitor:
+    image: python:3.11-slim
+    container_name: kiva_cdc_monitor
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements-cdc-monitor.txt &&
+      python cdc_monitor.py"
+    working_dir: /app
+    volumes:
+      - ./src:/app
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-kiva_admin}
+      DB_PASS: ${POSTGRES_PASSWORD:-kiva_password}
+      DB_NAME: ${POSTGRES_DB:-kiva_oltp}
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-kiva_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-kiva_password}
+      DEBEZIUM_URL: http://debezium:8083
+      DEBEZIUM_CONNECTOR_NAME: kiva-postgres-connector
+      POLL_INTERVAL_SECONDS: "15"
+    ports:
+      - "9200:9200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      debezium:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ----------------------------------------------------
+  # 6c. Observability: PostgreSQL Exporter
+  # ----------------------------------------------------
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: kiva_postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-kiva_admin}:${POSTGRES_PASSWORD:-kiva_password}@postgres:5432/${POSTGRES_DB:-kiva_oltp}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   # ----------------------------------------------------
   # 7. Observability: Prometheus
@@ -247,6 +339,33 @@ services:
       resources:
         limits:
           memory: 256M
+
+  # ----------------------------------------------------
+  # 11. Documentation: dbt Docs (lineage graph + catalog)
+  # ----------------------------------------------------
+  # Generates and serves the dbt-native documentation site (DAG lineage graph,
+  # column-level descriptions, test coverage) so readers can browse the data
+  # model interactively instead of only reading static schema docs.
+  dbt-docs:
+    image: python:3.11-slim
+    container_name: kiva_dbt_docs
+    # Version specifier quoted -- see note on the `dbt` service above.
+    command: >
+      sh -c "pip install --no-cache-dir 'dbt-clickhouse>=1.7.0' mashumaro==3.13.1 &&
+      (dbt docs generate --project-dir /usr/app --profiles-dir /usr/app || echo 'dbt docs generate failed, serving last known state') &&
+      python -m http.server 8085 --directory /usr/app/target"
+    volumes:
+      - ./dbt_project:/usr/app
+    working_dir: /usr/app
+    ports:
+      - "8085:8085"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
 volumes:
   pg_data:
