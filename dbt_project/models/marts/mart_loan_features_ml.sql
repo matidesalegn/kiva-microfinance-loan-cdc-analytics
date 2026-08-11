@@ -1,6 +1,12 @@
 {{ config(
-    materialized='table'
+    materialized='table',
+    engine='MergeTree()',
+    order_by=['loan_id'],
+    partition_by='toYYYYMM(posted_date)'
 ) }}
+-- Row-per-loan grain that grows unbounded with ingestion volume, so it is
+-- partitioned like the raw CDC table (see docs/design-report.md) to keep
+-- feature-store rebuilds/backfills scoped to a single month of data.
 
 WITH enriched_loans AS (
     SELECT *

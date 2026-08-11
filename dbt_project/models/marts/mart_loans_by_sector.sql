@@ -3,6 +3,10 @@
     engine='MergeTree()',
     order_by=['country', 'sector']
 ) }}
+-- Deliberately not partitioned: the grain is (country, sector), which caps this
+-- table at a few hundred rows regardless of source data volume, so partition
+-- pruning would add management overhead with no query-time benefit. See the
+-- ClickHouse design-rationale table in docs/design-report.md.
 
 SELECT
     country,
