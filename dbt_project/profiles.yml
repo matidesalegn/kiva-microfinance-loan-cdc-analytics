@@ -4,8 +4,8 @@ kiva:
     dev:
       type: clickhouse
       schema: analytics
-      host: clickhouse
-      port: 8123
-      user: kiva_admin
-      password: kiva_password
+      host: "{{ env_var('CLICKHOUSE_HOST', 'clickhouse') }}"
+      port: "{{ env_var('CLICKHOUSE_PORT', '8123') | as_number }}"
+      user: "{{ env_var('CLICKHOUSE_USER', 'kiva_admin') }}"
+      password: "{{ env_var('CLICKHOUSE_PASSWORD', 'kiva_password') }}"
       secure: False

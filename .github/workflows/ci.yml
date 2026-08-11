@@ -61,3 +61,85 @@ jobs:
       - name: Validate dbt Syntax & Models
         run: |
           dbt parse --project-dir dbt_project --profiles-dir dbt_project
+
+  integration-test:
+    name: 🔄 End-to-End CDC + dbt Integration Test
+    runs-on: ubuntu-latest
+    # Only pay for the expensive full-stack test once the cheap, fast checks pass.
+    needs: [lint-and-unit-test, validate-infrastructure-and-dbt]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create .env from template
+        run: cp .env.example .env
+
+      - name: Start Postgres, Redpanda, Debezium, ClickHouse & observability sidecars
+        run: |
+          docker compose up -d --wait --wait-timeout 180 \
+            postgres redpanda debezium clickhouse cdc-monitor postgres-exporter
+
+      - name: Register the Debezium CDC connector
+        run: docker compose up connector-registrar --exit-code-from connector-registrar
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Ingest real data from the Kiva API into Postgres
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5433"
+          DB_USER: kiva_admin
+          DB_PASS: kiva_password
+          DB_NAME: kiva_oltp
+        run: |
+          pip install requests psycopg[binary]
+          python src/ingest_api.py
+
+      - name: Wait for CDC events to replicate into ClickHouse
+        run: |
+          set +e
+          SUCCESS=0
+          for i in $(seq 1 20); do
+            COUNT=$(curl -s -u kiva_admin:kiva_password \
+              "http://localhost:8123/?query=SELECT%20count()%20FROM%20raw_data.kiva_loans_raw" | tr -d '[:space:]')
+            echo "Attempt $i: ClickHouse row count = ${COUNT:-<empty>}"
+            case "$COUNT" in
+              ''|*[!0-9]*) : ;;
+              *)
+                if [ "$COUNT" -gt 0 ]; then SUCCESS=1; fi
+                ;;
+            esac
+            [ "$SUCCESS" -eq 1 ] && break
+            sleep 5
+          done
+          if [ "$SUCCESS" -ne 1 ]; then
+            echo "Timed out waiting for CDC events to reach ClickHouse."
+            docker compose logs debezium clickhouse
+            exit 1
+          fi
+          echo "CDC replication confirmed: $COUNT row(s) in ClickHouse."
+
+      - name: Run dbt (staging -> intermediate -> marts) against the live warehouse
+        env:
+          CLICKHOUSE_HOST: localhost
+          CLICKHOUSE_PORT: "8123"
+          CLICKHOUSE_USER: kiva_admin
+          CLICKHOUSE_PASSWORD: kiva_password
+        run: |
+          pip install dbt-clickhouse mashumaro==3.13.1
+          dbt run --project-dir dbt_project --profiles-dir dbt_project
+          dbt test --project-dir dbt_project --profiles-dir dbt_project
+
+      - name: Verify the CDC observability exporter is reporting real metrics
+        run: |
+          curl -sf http://localhost:9200/metrics | grep -E \
+            "cdc_row_count_drift|cdc_replication_lag_seconds|debezium_connector_state"
+
+      - name: Tear down the stack
+        if: always()
+        run: docker compose down -v
