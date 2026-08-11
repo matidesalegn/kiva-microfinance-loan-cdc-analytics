@@ -315,6 +315,34 @@ services:
           memory: 256M
 
   # ----------------------------------------------------
+  # 7c. Observability: Mailpit (local SMTP catcher for testing Grafana alert emails)
+  # ----------------------------------------------------
+  # Grafana never sends email itself -- it's only an SMTP client, and always
+  # needs a real relay to hand messages to. Mailpit acts as that relay for
+  # local development: it accepts any SMTP submission on :1025 with no auth
+  # and no further delivery, and shows captured messages in a web UI on
+  # :8025. This lets us prove the full alert pipeline (rule fires ->
+  # notification policy -> contact point -> SMTP send) works end-to-end
+  # without needing real mailbox credentials. Swapping in a real relay (e.g.
+  # Gmail SMTP with an App Password) later is just changing the GF_SMTP_*
+  # env vars below to point at it instead.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: kiva_mailpit
+    ports:
+      - "8025:8025" # Web UI: view captured emails
+      - "1025:1025" # SMTP submission port Grafana connects to
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8025/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # ----------------------------------------------------
   # 8. Observability: Grafana
   # ----------------------------------------------------
   grafana:
@@ -336,6 +364,13 @@ services:
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
       - GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
       - GF_ANALYTICS_REPORTING_ENABLED=false
+      # SMTP relay for alert notification emails -- see the mailpit service
+      # above. No auth needed: Mailpit accepts any local submission.
+      - GF_SMTP_ENABLED=true
+      - GF_SMTP_HOST=mailpit:1025
+      - GF_SMTP_FROM_ADDRESS=alerts@kiva.local
+      - GF_SMTP_FROM_NAME=Kiva Microfinance Data Platform
+      - GF_SMTP_SKIP_VERIFY=true
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
@@ -343,6 +378,8 @@ services:
     depends_on:
       grafana-plugin-installer:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
     deploy:
       resources:
         limits:
