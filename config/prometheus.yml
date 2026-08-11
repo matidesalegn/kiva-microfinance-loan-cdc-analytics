@@ -12,3 +12,14 @@ scrape_configs:
     static_configs:
       # ClickHouse HTTP interface exposes Prometheus metrics natively on 9363 when enabled
       - targets: ['clickhouse:9363']
+
+  - job_name: 'postgres_metrics'
+    static_configs:
+      # prometheuscommunity/postgres-exporter sidecar against the OLTP source
+      - targets: ['postgres-exporter:9187']
+
+  - job_name: 'cdc_monitor'
+    static_configs:
+      # Custom exporter: Postgres<->ClickHouse row reconciliation, CDC freshness
+      # lag, and Debezium connector task health (see src/cdc_monitor.py)
+      - targets: ['cdc-monitor:9200']

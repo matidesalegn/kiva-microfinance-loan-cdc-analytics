@@ -1,0 +1,119 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: kiva-cdc-pipeline
+    folder: Kiva Microfinance Alerts
+    interval: 1m
+    rules:
+      - uid: cdc-row-drift-high
+        title: "CDC row count drift exceeds threshold"
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Postgres and ClickHouse row counts have drifted by more than 5 rows for 5+ minutes"
+          description: "cdc_row_count_drift measures postgres_row_count - clickhouse_row_count. Sustained drift means Debezium/Redpanda/ClickHouse ingestion is not keeping up, or the connector has stalled."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: abs(cdc_row_count_drift)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+
+      - uid: cdc-replication-lag-high
+        title: "CDC replication lag too high"
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "ClickHouse data freshness lag exceeds 120 seconds"
+          description: "cdc_replication_lag_seconds = now() - max(source_updated_at) of rows visible in ClickHouse. Rising lag means CDC events are queuing up faster than they are consumed."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: cdc_replication_lag_seconds
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [120] }
+
+      - uid: debezium-connector-down
+        title: "Debezium connector is not RUNNING"
+        condition: C
+        for: 2m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: "The Debezium PostgreSQL connector or one of its tasks is not in RUNNING state"
+          description: "debezium_connector_state is polled from the Kafka Connect REST API by cdc-monitor. 0 means the connector, or at least one task, has stopped, paused or failed."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: min(debezium_connector_state)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+
+      - uid: clickhouse-ingestion-stalled
+        title: "ClickHouse row ingestion stalled"
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "No rows inserted into ClickHouse in the last 5 minutes"
+          description: "rate(ClickHouseProfileEvents_InsertedRows[5m]) has been ~0. Expected during idle periods between Dagster runs; investigate if it persists across a scheduled ingestion window."
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: rate(ClickHouseProfileEvents_InsertedRows[5m])
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [0.0001] }

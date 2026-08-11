@@ -24,7 +24,7 @@
         {
             "datasource": {
                 "type": "prometheus",
-                "uid": "Prometheus"
+                "uid": "prometheus"
             },
             "fieldConfig": {
                 "defaults": {
@@ -110,7 +110,7 @@
                 {
                     "datasource": {
                         "type": "prometheus",
-                        "uid": "Prometheus"
+                        "uid": "prometheus"
                     },
                     "editorMode": "code",
                     "expr": "rate(vectorized_kafka_rpc_received_bytes[1m])",
@@ -125,7 +125,7 @@
         {
             "datasource": {
                 "type": "prometheus",
-                "uid": "Prometheus"
+                "uid": "prometheus"
             },
             "fieldConfig": {
                 "defaults": {
@@ -211,7 +211,7 @@
                 {
                     "datasource": {
                         "type": "prometheus",
-                        "uid": "Prometheus"
+                        "uid": "prometheus"
                     },
                     "editorMode": "code",
                     "expr": "ClickHouseMetrics_MemoryTracking",
@@ -226,7 +226,7 @@
         {
             "datasource": {
                 "type": "prometheus",
-                "uid": "Prometheus"
+                "uid": "prometheus"
             },
             "fieldConfig": {
                 "defaults": {
@@ -289,7 +289,7 @@
                 {
                     "datasource": {
                         "type": "prometheus",
-                        "uid": "Prometheus"
+                        "uid": "prometheus"
                     },
                     "editorMode": "code",
                     "expr": "ClickHouseMetrics_Query",
@@ -304,7 +304,7 @@
         {
             "datasource": {
                 "type": "prometheus",
-                "uid": "Prometheus"
+                "uid": "prometheus"
             },
             "fieldConfig": {
                 "defaults": {
@@ -358,7 +358,7 @@
                 {
                     "datasource": {
                         "type": "prometheus",
-                        "uid": "Prometheus"
+                        "uid": "prometheus"
                     },
                     "editorMode": "code",
                     "expr": "rate(ClickHouseProfileEvents_InsertedRows[1m])",
@@ -373,7 +373,7 @@
         {
             "datasource": {
                 "type": "prometheus",
-                "uid": "Prometheus"
+                "uid": "prometheus"
             },
             "fieldConfig": {
                 "defaults": {
@@ -419,7 +419,7 @@
                 {
                     "datasource": {
                         "type": "prometheus",
-                        "uid": "Prometheus"
+                        "uid": "prometheus"
                     },
                     "editorMode": "code",
                     "expr": "ClickHouseProfileEvents_InsertedRows",
@@ -435,7 +435,7 @@
         {
             "datasource": {
                 "type": "prometheus",
-                "uid": "Prometheus"
+                "uid": "prometheus"
             },
             "fieldConfig": {
                 "defaults": {
@@ -469,7 +469,7 @@
                 {
                     "datasource": {
                         "type": "prometheus",
-                        "uid": "Prometheus"
+                        "uid": "prometheus"
                     },
                     "editorMode": "code",
                     "expr": "rate(vectorized_kafka_handler_requests_completed_total[1m])",
@@ -480,6 +480,216 @@
             ],
             "title": "Redpanda Kafka Requests (Req/sec)",
             "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "palette-classic" },
+                    "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 2,
+                        "spanNulls": true
+                    },
+                    "unit": "short"
+                }
+            },
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+            "id": 7,
+            "options": {
+                "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+                "tooltip": { "hideZeros": false, "mode": "multi", "sort": "none" }
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "prometheus" },
+                    "editorMode": "code",
+                    "expr": "cdc_postgres_row_count",
+                    "legendFormat": "Postgres (source)",
+                    "range": true,
+                    "refId": "A"
+                },
+                {
+                    "datasource": { "type": "prometheus", "uid": "prometheus" },
+                    "editorMode": "code",
+                    "expr": "cdc_clickhouse_row_count",
+                    "legendFormat": "ClickHouse (CDC target)",
+                    "range": true,
+                    "refId": "B"
+                }
+            ],
+            "description": "Cross-checks the OLTP source of truth against the deduplicated CDC target so silent replication gaps are visible, not just inferred. Backed by src/cdc_monitor.py.",
+            "title": "CDC Reconciliation: Postgres vs ClickHouse Row Count",
+            "type": "timeseries"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "thresholds" },
+                    "noValue": "0",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "green", "value": 0 },
+                            { "color": "orange", "value": 3 },
+                            { "color": "red", "value": 6 }
+                        ]
+                    }
+                }
+            },
+            "gridPos": { "h": 8, "w": 6, "x": 12, "y": 24 },
+            "id": 8,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "auto"
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "prometheus" },
+                    "editorMode": "code",
+                    "expr": "cdc_row_count_drift",
+                    "legendFormat": "drift",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "description": "postgres_row_count - clickhouse_row_count. Alerts above 5 for 5+ minutes (cdc-row-drift-high).",
+            "title": "CDC Row Count Drift",
+            "type": "stat"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "thresholds" },
+                    "unit": "s",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "green", "value": 0 },
+                            { "color": "orange", "value": 60 },
+                            { "color": "red", "value": 120 }
+                        ]
+                    }
+                }
+            },
+            "gridPos": { "h": 8, "w": 6, "x": 18, "y": 24 },
+            "id": 9,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "auto"
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "prometheus" },
+                    "editorMode": "code",
+                    "expr": "cdc_replication_lag_seconds",
+                    "legendFormat": "lag",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "description": "now() - max(source_updated_at) of rows visible in ClickHouse. Alerts above 120s for 5+ minutes (cdc-replication-lag-high).",
+            "title": "CDC Replication Lag (seconds)",
+            "type": "stat"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "thresholds" },
+                    "mappings": [
+                        { "type": "value", "options": { "1": { "text": "RUNNING", "color": "green" } } },
+                        { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "red", "value": 0 },
+                            { "color": "green", "value": 1 }
+                        ]
+                    }
+                }
+            },
+            "gridPos": { "h": 6, "w": 6, "x": 0, "y": 32 },
+            "id": 10,
+            "options": {
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "auto"
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "prometheus" },
+                    "editorMode": "code",
+                    "expr": "min(debezium_connector_state)",
+                    "legendFormat": "connector",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "description": "Polled from the Kafka Connect REST API by cdc-monitor. Alerts if not RUNNING for 2+ minutes (debezium-connector-down).",
+            "title": "Debezium Connector State",
+            "type": "stat"
+        },
+        {
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": {
+                "defaults": {
+                    "color": { "mode": "thresholds" },
+                    "mappings": [
+                        { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+                        { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "red", "value": 0 },
+                            { "color": "green", "value": 1 }
+                        ]
+                    }
+                }
+            },
+            "gridPos": { "h": 6, "w": 6, "x": 6, "y": 32 },
+            "id": 11,
+            "options": {
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "auto"
+            },
+            "pluginVersion": "13.0.2",
+            "targets": [
+                {
+                    "datasource": { "type": "prometheus", "uid": "prometheus" },
+                    "editorMode": "code",
+                    "expr": "pg_up",
+                    "legendFormat": "postgres_exporter",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Postgres Exporter Scrape Status",
+            "type": "stat"
         }
     ],
     "preload": false,
@@ -506,5 +716,5 @@
     "timezone": "browser",
     "title": "Kiva Microfinance Pipeline Observability",
     "uid": "adt54j4",
-    "version": 8
+    "version": 9
 }
