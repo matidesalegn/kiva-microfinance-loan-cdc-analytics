@@ -56,7 +56,18 @@ Four alert rules are provisioned as code in `config/grafana/provisioning/alertin
 | `debezium-connector-down` | `min(debezium_connector_state) < 1` for 2m | critical |
 | `clickhouse-ingestion-stalled` | `rate(ClickHouseProfileEvents_InsertedRows[5m]) ≈ 0` for 5m | warning |
 
-No external notification channel (Slack/email/PagerDuty) is configured, since that would require credentials outside the scope of a local demo stack — rules fire and are visible in the Grafana Alerting UI (`http://localhost:3001/alerting/list`), which is enough to demonstrate the alerting *design*; wiring a real contact point in production is a one-file change (`config/grafana/provisioning/alerting/contact-points.yml`).
+### Email delivery
+
+Alerts route to a real email **contact point** (`config/grafana/provisioning/alerting/contact-points.yml`) via a **notification policy** (`config/grafana/provisioning/alerting/notification-policies.yml`) — both provisioned as code, not clicked together in the UI. Grafana itself never sends email directly; it's only an SMTP client, so it needs a relay to hand messages to:
+
+- **Local/demo (current default):** the `mailpit` service (`docker-compose.yml`) acts as that relay — it accepts any SMTP submission on `:1025` with no auth and doesn't forward anywhere further, and shows every captured message in a web UI on **[http://localhost:8025](http://localhost:8025)**. This proves the entire pipeline (rule fires → policy routes → contact point → SMTP send) end-to-end without needing real mailbox credentials committed anywhere.
+- **Real delivery:** point the `GF_SMTP_*` env vars on the `grafana` service at a real relay (e.g. Gmail SMTP with an [App Password](https://myaccount.google.com/apppasswords), or any transactional email provider) instead of `mailpit:1025`. The credential goes in `.env` (gitignored) and is referenced via `${...}` interpolation — never hardcoded.
+
+**How to manually verify alerting is working**, beyond just reading rule state in the UI:
+1. Break something the rules actually watch, e.g. `docker stop kiva_debezium` (fires `debezium-connector-down` after its 2m `for` duration).
+2. Watch it progress `inactive` → `pending` → `firing` at **[http://localhost:3001/alerting/list](http://localhost:3001/alerting/list)**.
+3. Confirm the email lands at **[http://localhost:8025](http://localhost:8025)** — subject line includes `[FIRING:1] <rule name>`.
+4. Fix the thing (`docker start kiva_debezium`) and confirm the rule returns to `inactive`. The `[RESOLVED]` email for the same alert group is intentionally batched by `group_interval: 5m` in the notification policy (avoids flapping/notification spam), so it arrives up to 5 minutes after the first firing notification for that group, not immediately on recovery.
 
 ---
 
@@ -67,3 +78,4 @@ To enforce Infrastructure-as-Code (IaC) practices, everything below is created a
 - **Datasources**: `config/grafana/provisioning/datasources/prometheus.yml` and `clickhouse.yml`, both with explicit, stable `uid`s (`prometheus`, `clickhouse`) so dashboards and alert rules can reference them deterministically regardless of provisioning order.
 - **Dashboards**: `config/grafana/dashboards/kiva_pipeline_observability.json` (11 panels: Redpanda throughput, ClickHouse memory/queries/ingestion rate, Postgres-vs-ClickHouse row reconciliation, CDC lag, Debezium connector state, Postgres exporter status) and `kiva_executive_analytics.json` (business KPIs from the marts).
 - **Alert rules**: `config/grafana/provisioning/alerting/rules.yml`, described above.
+- **Contact point & notification policy**: `config/grafana/provisioning/alerting/contact-points.yml` and `notification-policies.yml` — route firing alerts to email via the `mailpit` SMTP relay described above.

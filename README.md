@@ -156,6 +156,7 @@ curl -s http://localhost:9200/metrics | grep -E "cdc_row_count_drift|cdc_replica
 | Redpanda Console (topics/messages) | http://localhost:8080 | — |
 | Debezium UI (connector status) | http://localhost:8084 | — |
 | `cdc-monitor` raw metrics | http://localhost:9200/metrics | — |
+| Mailpit (captured alert emails) | http://localhost:8025 | — |
 | PostgreSQL (OLTP) | `localhost:5433` | `kiva_admin` / `kiva_password`, db `kiva_oltp` (see `.env`) |
 | ClickHouse HTTP interface | http://localhost:8123 | `kiva_admin` / `kiva_password` |
 | ClickHouse native TCP (for `clickhouse-client`) | `localhost:9000` | `kiva_admin` / `kiva_password` |
@@ -169,7 +170,8 @@ All default credentials live in [`.env.example`](./.env.example) — copy it to 
 * **Grafana Dashboards:** http://localhost:3001 (`admin` / `kiva`)
   - **Kiva Microfinance Pipeline Observability:** operational metrics — Redpanda throughput, ClickHouse memory/queries/write ops, Postgres-vs-ClickHouse row reconciliation, CDC replication lag, Debezium connector state, Postgres exporter status.
   - **Kiva Microfinance Executive Loan Analytics:** business intelligence & ML feature distributions querying the ClickHouse marts directly.
-* **Grafana Alerting:** http://localhost:3001/alerting/list — 4 provisioned rules (CDC row drift, CDC replication lag, Debezium connector down, ClickHouse ingestion stalled). See [`docs/observability.md`](./docs/observability.md) for the full design and rationale.
+* **Grafana Alerting:** http://localhost:3001/alerting/list — 4 provisioned rules (CDC row drift, CDC replication lag, Debezium connector down, ClickHouse ingestion stalled), routed by a provisioned notification policy to a real email contact point. See [`docs/observability.md`](./docs/observability.md) for the full design and rationale.
+* **Alert emails:** captured by **Mailpit** at http://localhost:8025 (a local SMTP catcher — no real credentials needed to see alerting work end-to-end). To manually trigger one: `docker stop kiva_debezium`, wait ~2-3 minutes for the `debezium-connector-down` rule to fire, check the email at localhost:8025, then `docker start kiva_debezium` to resolve it. See [`docs/observability.md`](./docs/observability.md#3-alerting) for the full walkthrough, including how to point this at a real mailbox instead.
 * **Prometheus Targets:** http://localhost:9090/targets — `redpanda`, `clickhouse`, `postgres-exporter`, `cdc-monitor`.
 
 ---
