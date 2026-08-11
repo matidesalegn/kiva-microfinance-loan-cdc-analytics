@@ -7,15 +7,17 @@ The architecture simulates a modern, resilient, and highly scalable data stack c
 
 ### The Stack:
 1. **Ingestion (Source):** Python REST API Ingestion into **PostgreSQL** (OLTP).
-2. **Change Data Capture (CDC):** **Debezium** tracking logical replication slots in Postgres.
+2. **Change Data Capture (CDC):** **Debezium** tracking logical replication slots in Postgres, auto-registered at startup by a `connector-registrar` init container.
 3. **Event Stream:** **Redpanda** (A lightweight, C++ Kafka alternative requiring zero JVM overhead).
 4. **Data Warehouse (OLAP):** **ClickHouse**, utilizing native Kafka-engine ingestion to sink messages instantly without a dedicated connector service.
-5. **Transformation & Data Quality:** **dbt (Data Build Tool)** executing SQL transformations and data quality tests directly inside ClickHouse.
+5. **Transformation & Data Quality:** **dbt (Data Build Tool)** executing SQL transformations and data quality tests directly inside ClickHouse, docs served live via **dbt-docs**.
 6. **Orchestration:** **Dagster** orchestrating the entire lineage from API fetch -> CDC Buffer -> dbt Run -> dbt Test.
-7. **Observability:** **Prometheus & Grafana** natively scraping Redpanda and ClickHouse health metrics.
+7. **Observability:** **Prometheus & Grafana**, scraping Redpanda, ClickHouse, Postgres (`postgres-exporter`), and a custom **`cdc-monitor`** exporter that reconciles Postgres/ClickHouse row counts and measures real CDC replication lag — plus 4 provisioned Grafana alert rules.
 
 ### Architecture Flow
 ![Kiva Microfinance Data Platform Architecture](./architecture.png)
+
+The diagram above shows the core data path. See [`docs/design-report.md`](./docs/design-report.md) for the full current-state architecture diagram (including the observability/reliability additions), the ERD/schema documentation with ClickHouse design rationale, and the scaling plan.
 
 ---
 
@@ -26,6 +28,8 @@ The architecture simulates a modern, resilient, and highly scalable data stack c
 * **ClickHouse `FINAL` modifier for CDC:** Instead of complex SQL deduplication logic, the dbt staging model leverages ClickHouse's `ReplacingMergeTree` and `FINAL` modifier to instantly collapse CDC event history into the absolute latest state.
 * **Dagster over Airflow (For Local Development):** Airflow relies on a webserver, scheduler, and worker (often requiring multiple gigabytes of RAM). I moved to Dagster solely to run this project efficiently on limited local hardware. However, for an enterprise-grade orchestrator in a production environment, I would definitely go with **Apache Airflow**.
 * **Docker Compose Healthchecks & Network Isolation:** Every container implements strict health checks and startup sequencing, mitigating race conditions during localized deployment.
+* **Auto-Registered CDC Connector:** The Debezium connector config is a template rendered from `.env` credentials and POSTed automatically by a one-shot `connector-registrar` container that waits on Debezium's healthcheck. This is what makes `docker compose up -d` alone sufficient — no manual `curl` step.
+* **Reconciliation over inference:** Rather than assuming CDC "just works" because Redpanda/ClickHouse report healthy, `cdc-monitor` (`src/cdc_monitor.py`) directly compares Postgres and ClickHouse row counts and measures freshness lag using Postgres's own `updated_at` timestamp carried through the pipeline — a stalled or lossy connector is caught even when every infrastructure metric looks fine.
 
 ## Future Scalability
 If deploying this to an Enterprise Cloud environment (e.g., GCP or AWS) at massive scale, the architecture would evolve to ensure maximum resilience and throughput:
@@ -36,7 +40,9 @@ If deploying this to an Enterprise Cloud environment (e.g., GCP or AWS) at massi
 ---
 
 ## Dataset & Domain Overview
-This platform ingests and processes live micro-finance loan data fetched directly from the **Kiva Public REST API** (`https://api.kivaws.org/v1/loans/search.json`). 
+This platform ingests and processes live micro-finance loan data fetched directly from the **Kiva Public REST API** (`https://api.kivaws.org/v1/loans/search.json`).
+
+**Authentication:** none required. Kiva's `/v1/loans/search.json` endpoint is fully public and read-only — no API key, token, or account registration is needed. The only special handling required is a standard browser `User-Agent` header (see `src/ingest_api.py`), since Kiva's WAF blocks requests carrying the default Python `requests` signature.
 
 ### Why Kiva Data?
 Kiva is a global micro-lending platform that provides loan capital to entrepreneurs and small business owners in developing regions. This domain was chosen because Kiva's public API provides a useful real-world dataset for demonstrating CDC, data modeling, and analytics.
@@ -58,22 +64,27 @@ The pipeline ingests real-time transactional loan records with the following sch
 ## How to Run Locally
 
 ### Prerequisites
-* Docker & Docker Compose
+* Docker & Docker Compose (v2, i.e. the `docker compose` CLI, not `docker-compose`)
 * Git
+* ~4 GB of free RAM for the container set
 
-### 1. Spin up the Infrastructure
+### 1. Spin up the entire stack — one command
 ```bash
+cp .env.example .env   # optional: only needed if you want to override defaults
 docker compose up -d
 ```
-*This starts Postgres, Redpanda, Debezium, ClickHouse, Dagster, Prometheus, and Grafana.*
+This single command starts **everything**: Postgres, Redpanda, Debezium, the `connector-registrar`, ClickHouse, `dbt-docs`, Dagster, `cdc-monitor`, `postgres-exporter`, Prometheus, Grafana, Redpanda Console, and the Debezium UI.
 
-### 2. Register the Debezium CDC Connector
-Debezium needs to be told which tables to monitor.
+Give it 30–60 seconds on first boot for image pulls and healthchecks. Confirm everything is up:
 ```bash
-curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" http://localhost:8083/connectors/ -d "@config/debezium_postgres_source.json"
+docker compose ps
+```
+All services should show `healthy` or `running`. If you ever need to re-register the connector manually (e.g. after editing `config/debezium_postgres_source.json.template`):
+```bash
+docker compose up connector-registrar
 ```
 
-### 3. Run the Orchestration Pipeline (Dagster)
+### 2. Run the Orchestration Pipeline (Dagster)
 Open your browser and navigate to **[http://localhost:3000](http://localhost:3000)**.
 1. Click on **Assets** in the top navigation bar.
 2. Click **Materialize All** to run the full pipeline.
@@ -85,11 +96,88 @@ Open your browser and navigate to **[http://localhost:3000](http://localhost:300
 4. Dagster runs `dbt run` to materialize the models in ClickHouse.
 5. Dagster runs `dbt test` to enforce data quality constraints (Unique IDs, Non-Null values, Accepted Statuses).
 
+It also runs unattended on a daily schedule (`0 0 * * *`, defined in `dagster_orchestration/definitions.py`) once the Dagster container is up.
+
 ---
 
-## 📈 Observability & Business Dashboards
-* **Dagster UI:** http://localhost:3000
-* **Grafana Dashboards:** http://localhost:3001 (Credentials: `admin` / `kiva`)
-  - **Kiva Microfinance Pipeline Observability:** Real-time operational metrics (Redpanda throughput, ClickHouse memory, queries, & write ops).
-  - **Kiva Microfinance Executive Loan Analytics:** Business Intelligence & ML feature distributions querying ClickHouse data marts directly (`analytics.int_loans_enriched` & `analytics.mart_loan_features_ml`).
-* **Prometheus Targets:** http://localhost:9090
+## Validating the Pipeline
+
+Check each stage independently, in order:
+
+**1. Ingestion landed in Postgres:**
+```bash
+docker exec -it kiva_postgres psql -U kiva_admin -d kiva_oltp \
+  -c "SELECT COUNT(*), MAX(updated_at) FROM raw_data.kiva_loans;"
+```
+
+**2. CDC events reached the Redpanda topic:**
+```bash
+docker exec -it kiva_redpanda rpk topic consume cdc.raw_data.kiva_loans --num 3
+```
+or browse visually via **Redpanda Console** at [http://localhost:8080](http://localhost:8080).
+
+**3. Debezium connector is healthy:**
+```bash
+curl -s http://localhost:8083/connectors/kiva-postgres-connector/status | python -m json.tool
+```
+or via **Debezium UI** at [http://localhost:8084](http://localhost:8084).
+
+**4. Data landed in ClickHouse (raw CDC table):**
+```bash
+docker exec -it kiva_clickhouse clickhouse-client \
+  --query "SELECT COUNT(*) FROM raw_data.kiva_loans_raw FINAL WHERE is_deleted = 0"
+```
+
+**5. dbt models built successfully (staging → marts):**
+```bash
+docker exec -it kiva_clickhouse clickhouse-client \
+  --query "SELECT COUNT(*) FROM analytics.mart_loans_by_sector"
+docker exec -it kiva_clickhouse clickhouse-client \
+  --query "SELECT COUNT(*) FROM analytics.mart_loan_features_ml"
+```
+Or browse the generated docs/lineage graph at **dbt-docs**: [http://localhost:8085](http://localhost:8085).
+
+**6. End-to-end CDC integrity (no dropped/stale rows):**
+```bash
+curl -s http://localhost:9200/metrics | grep -E "cdc_row_count_drift|cdc_replication_lag_seconds"
+```
+`cdc_row_count_drift` should trend toward `0` and `cdc_replication_lag_seconds` should stay low (single-digit to low-double-digit seconds) once the pipeline is idle. Both are also plotted live on the **Kiva Microfinance Pipeline Observability** Grafana dashboard.
+
+---
+
+## Accessing the Platform
+
+| Service | URL | Credentials |
+|---|---|---|
+| Dagster (orchestration UI) | http://localhost:3000 | — |
+| Grafana (dashboards + alerts) | http://localhost:3001 | `admin` / `kiva` (see `.env`) |
+| Prometheus (raw metrics/targets) | http://localhost:9090 | — |
+| dbt-docs (lineage graph & catalog) | http://localhost:8085 | — |
+| Redpanda Console (topics/messages) | http://localhost:8080 | — |
+| Debezium UI (connector status) | http://localhost:8084 | — |
+| `cdc-monitor` raw metrics | http://localhost:9200/metrics | — |
+| PostgreSQL (OLTP) | `localhost:5433` | `kiva_admin` / `kiva_password`, db `kiva_oltp` (see `.env`) |
+| ClickHouse HTTP interface | http://localhost:8123 | `kiva_admin` / `kiva_password` |
+| ClickHouse native TCP (for `clickhouse-client`) | `localhost:9000` | `kiva_admin` / `kiva_password` |
+| Debezium Kafka Connect REST API | http://localhost:8083 | — |
+
+All default credentials live in [`.env.example`](./.env.example) — copy it to `.env` to override them.
+
+---
+
+## Observability & Business Dashboards
+* **Grafana Dashboards:** http://localhost:3001 (`admin` / `kiva`)
+  - **Kiva Microfinance Pipeline Observability:** operational metrics — Redpanda throughput, ClickHouse memory/queries/write ops, Postgres-vs-ClickHouse row reconciliation, CDC replication lag, Debezium connector state, Postgres exporter status.
+  - **Kiva Microfinance Executive Loan Analytics:** business intelligence & ML feature distributions querying the ClickHouse marts directly.
+* **Grafana Alerting:** http://localhost:3001/alerting/list — 4 provisioned rules (CDC row drift, CDC replication lag, Debezium connector down, ClickHouse ingestion stalled). See [`docs/observability.md`](./docs/observability.md) for the full design and rationale.
+* **Prometheus Targets:** http://localhost:9090/targets — `redpanda`, `clickhouse`, `postgres-exporter`, `cdc-monitor`.
+
+---
+
+## CI/CD
+
+Defined in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), triggered on every push/PR to `main`/`master`. Three staged jobs — each gated on the previous one passing, so cheap/fast feedback happens before the expensive full-stack test runs:
+
+1. **Lint & Unit Test** — `flake8` (fails the build on syntax errors/undefined names; warns on style) + `pytest tests/` (ingestion logic and CDC-monitor drift/lag/connector-health calculations, all mocked — no live services required).
+2. **Docker Compose & dbt Validation** — `docker compose config` (catches YAML/interpolation errors) + `dbt parse` (catches dbt syntax/ref errors) as a fast smoke test.
+3. **End-to-End CDC + dbt Integration Test** — actually stands up Postgres, Redpanda, Debezium, ClickHouse, `cdc-monitor`, and `postgres-exporter`; auto-registers the Debezium connector; runs the real ingestion script against the live stack; polls ClickHouse until CDC-replicated rows are observed; runs `dbt run` and `dbt test` against the live warehouse; and checks that `cdc-monitor`'s `/metrics` endpoint is reporting real values. This is what catches a connector config or model that's syntactically valid but functionally broken — the previous version of this pipeline only ran `dbt parse`, which cannot catch that class of bug.
