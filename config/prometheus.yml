@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'redpanda_metrics'
+    static_configs:
+      # Redpanda exposes Prometheus metrics natively on port 9644
+      - targets: ['redpanda:9644']
+  
+  - job_name: 'clickhouse_metrics'
+    static_configs:
+      # ClickHouse HTTP interface exposes Prometheus metrics natively on 9363 when enabled
+      - targets: ['clickhouse:9363']
