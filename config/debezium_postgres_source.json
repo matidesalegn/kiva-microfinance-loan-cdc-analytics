@@ -1,0 +1,26 @@
+{
+  "name": "kiva-postgres-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "kiva_admin",
+    "database.password": "kiva_password",
+    "database.dbname": "kiva_oltp",
+    "topic.prefix": "cdc",
+    "schema.include.list": "raw_data",
+    "table.include.list": "raw_data.kiva_loans",
+    "plugin.name": "pgoutput",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite",
+    "transforms.unwrap.add.fields": "op,ts_ms",
+    "decimal.handling.mode": "double"
+  }
+}
