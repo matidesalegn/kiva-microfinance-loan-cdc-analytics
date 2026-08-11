@@ -284,6 +284,37 @@ services:
           memory: 256M
 
   # ----------------------------------------------------
+  # 7b. Grafana Plugin Installer (one-shot init job)
+  # ----------------------------------------------------
+  # Grafana >=11.5's own plugin installer (triggered by either the legacy
+  # GF_INSTALL_PLUGINS or the newer GF_PLUGINS_PREINSTALL env var) always
+  # merges your requested plugin into Grafana's built-in default app-plugin
+  # list (grafana-metricsdrilldown-app, elasticsearch, grafana-lokiexplore-app,
+  # grafana-pyroscope-app, grafana-exploretraces-app) -- there is no env var
+  # that installs *only* what you ask for. The only true kill switch,
+  # GF_PLUGINS_PREINSTALL_DISABLED=true, disables that whole subsystem
+  # including your own requested plugin, with no partial opt-out (verified
+  # empirically against grafana/grafana-oss:latest, not assumed from docs).
+  # So the ClickHouse plugin is installed here instead, directly into the
+  # shared grafana_data volume via `grafana cli plugins install` -- a
+  # separate, simpler code path that bypasses the default-list merge
+  # entirely -- and the main `grafana` service below disables the
+  # preinstall subsystem outright, since by the time it boots the one
+  # plugin it actually needs is already on disk.
+  grafana-plugin-installer:
+    image: grafana/grafana-oss:latest
+    container_name: kiva_grafana_plugin_installer
+    entrypoint: ["grafana"]
+    command: ["cli", "--pluginsDir", "/var/lib/grafana/plugins", "plugins", "install", "vertamedia-clickhouse-datasource"]
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ----------------------------------------------------
   # 8. Observability: Grafana
   # ----------------------------------------------------
   grafana:
@@ -294,15 +325,44 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-kiva}
-      - GF_INSTALL_PLUGINS=vertamedia-clickhouse-datasource
+      # The ClickHouse plugin is preinstalled by grafana-plugin-installer
+      # above. This disables Grafana's own default-app-plugin auto-install
+      # (see the note on that service) -- this project only uses Prometheus
+      # + ClickHouse, so those defaults are pure memory/disk overhead, each
+      # running as its own backend subprocess.
+      - GF_PLUGINS_PREINSTALL_DISABLED=true
+      # Avoid background HTTP calls to grafana.com for update checks -- not
+      # useful for a local/offline demo stack, and one less thing running.
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
       - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      grafana-plugin-installer:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
-          memory: 256M
+          # 256M was sized for dashboards-only, pre-alerting. Unified
+          # alerting (ngalert scheduler/state manager for the 4 provisioned
+          # rules) plus the bleve search indices it builds for
+          # dashboards/folders/rules add a permanently higher baseline --
+          # 256M was getting OOM-killed (exit 137, confirmed via `docker
+          # inspect --format '{{.State.OOMKilled}}'`) roughly 10-15 minutes
+          # after startup, once alert evaluation and index building kicked
+          # in. Even with only the one needed plugin loaded (see
+          # grafana-plugin-installer above), real usage climbed to ~80% of
+          # 512M within a few minutes of dashboard/API/alert activity before
+          # visibly decelerating -- too close to the ceiling to trust across
+          # a longer session, so this is set to 768M for real headroom.
+          # docker stats/docker inspect --format '{{.State.OOMKilled}}' are
+          # the way to re-diagnose this if it ever recurs; the host machine
+          # has ample spare capacity (~2GB used of 5.7GB Docker VM memory
+          # across the whole 13-container stack at the time this was tuned).
+          memory: 768M
 
   # ----------------------------------------------------
   # 9. Observability: Redpanda Console
