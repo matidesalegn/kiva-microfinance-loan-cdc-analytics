@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: raw_data
+    description: "The raw CDC streams ingested directly from PostgreSQL via Debezium and Redpanda"
+    database: raw_data
+    tables:
+      - name: kiva_loans_raw
+        description: "Raw events representing inserts and updates on the Kiva loans OLTP table"
+        columns:
+          - name: id
+            tests:
+              - not_null

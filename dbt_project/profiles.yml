@@ -1,0 +1,11 @@
+kiva:
+  target: dev
+  outputs:
+    dev:
+      type: clickhouse
+      schema: analytics
+      host: clickhouse
+      port: 8123
+      user: kiva_admin
+      password: kiva_password
+      secure: False

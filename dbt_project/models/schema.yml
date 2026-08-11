@@ -1,0 +1,71 @@
+version: 2
+
+models:
+  - name: stg_kiva_loans
+    description: "Cleaned and deduplicated loans data from Kiva CDC stream"
+    meta:
+      owner: "data-engineering"
+    columns:
+      - name: loan_id
+        description: "The primary key for the loan"
+        tests:
+          - unique
+          - not_null
+      
+      - name: entrepreneur_name
+        description: "The name of the borrower"
+        meta:
+          contains_pii: true
+
+      - name: loan_status
+        description: "Current status of the loan"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['funded', 'fundraising', 'in_repayment', 'defaulted', 'refunded', 'expired']
+              
+      - name: loan_amount
+        description: "Total amount requested for the loan"
+        tests:
+          - not_null
+
+  - name: int_loans_enriched
+    description: "Intermediate model applying funding tiers and percentages"
+    meta:
+      owner: "analytics"
+    columns:
+      - name: funding_tier
+        description: "Business categorization of how close a loan is to being funded"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Fully Funded', 'Almost Funded', 'Needs Funding']
+
+  - name: mart_loans_by_sector
+    description: "Aggregated metrics by country and sector for dashboarding"
+    meta:
+      owner: "reporting"
+    columns:
+      - name: country
+        tests:
+          - not_null
+      - name: total_loan_volume
+        tests:
+          - not_null
+
+  - name: mart_loan_features_ml
+    description: "Machine Learning feature store producing normalized, encoded, and labeled datasets"
+    meta:
+      owner: "ml-engineering"
+    columns:
+      - name: loan_id
+        tests:
+          - unique
+          - not_null
+      - name: target_is_fully_funded
+        description: "Binary classification target variable for ML modeling"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+

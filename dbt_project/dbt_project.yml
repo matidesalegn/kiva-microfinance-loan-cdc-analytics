@@ -1,0 +1,22 @@
+name: 'kiva_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'kiva'
+
+model-paths: ["models"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  kiva_analytics:
+    staging:
+      +materialized: view
+      +tags: ["hourly", "core"]
+    intermediate:
+      +materialized: view
+      +tags: ["hourly", "business_logic"]
+    marts:
+      +materialized: table
+      +engine: MergeTree()
+      +order_by: loan_id
+      +tags: ["daily", "reporting"]
