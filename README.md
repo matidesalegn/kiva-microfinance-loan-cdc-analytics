@@ -12,7 +12,7 @@ The architecture simulates a modern, resilient, and highly scalable data stack c
 4. **Data Warehouse (OLAP):** **ClickHouse**, utilizing native Kafka-engine ingestion to sink messages instantly without a dedicated connector service.
 5. **Transformation & Data Quality:** **dbt (Data Build Tool)** executing SQL transformations and data quality tests directly inside ClickHouse, docs served live via **dbt-docs**.
 6. **Orchestration:** **Dagster** orchestrating the entire lineage from API fetch -> CDC Buffer -> dbt Run -> dbt Test.
-7. **Observability:** **Prometheus & Grafana**, scraping Redpanda, ClickHouse, Postgres (`postgres-exporter`), and a custom **`cdc-monitor`** exporter that reconciles Postgres/ClickHouse row counts and measures real CDC replication lag — plus 4 provisioned Grafana alert rules.
+7. **Observability:** **Prometheus & Grafana**, scraping Redpanda, ClickHouse, Postgres (`postgres-exporter`), and a custom **`cdc-monitor`** exporter that reconciles Postgres/ClickHouse row counts and measures real CDC replication lag - plus 4 provisioned Grafana alert rules.
 
 ### Architecture Flow
 ![Kiva Microfinance Data Platform Architecture](./architecture.png)
@@ -28,8 +28,8 @@ The diagram above shows the core data path. See [`docs/design-report.md`](./docs
 * **ClickHouse `FINAL` modifier for CDC:** Instead of complex SQL deduplication logic, the dbt staging model leverages ClickHouse's `ReplacingMergeTree` and `FINAL` modifier to instantly collapse CDC event history into the absolute latest state.
 * **Dagster over Airflow (For Local Development):** Airflow relies on a webserver, scheduler, and worker (often requiring multiple gigabytes of RAM). I moved to Dagster solely to run this project efficiently on limited local hardware. However, for an enterprise-grade orchestrator in a production environment, I would definitely go with **Apache Airflow**.
 * **Docker Compose Healthchecks & Network Isolation:** Every container implements strict health checks and startup sequencing, mitigating race conditions during localized deployment.
-* **Auto-Registered CDC Connector:** The Debezium connector config is a template rendered from `.env` credentials and POSTed automatically by a one-shot `connector-registrar` container that waits on Debezium's healthcheck. This is what makes `docker compose up -d` alone sufficient — no manual `curl` step.
-* **Reconciliation over inference:** Rather than assuming CDC "just works" because Redpanda/ClickHouse report healthy, `cdc-monitor` (`src/cdc_monitor.py`) directly compares Postgres and ClickHouse row counts and measures freshness lag using Postgres's own `updated_at` timestamp carried through the pipeline — a stalled or lossy connector is caught even when every infrastructure metric looks fine.
+* **Auto-Registered CDC Connector:** The Debezium connector config is a template rendered from `.env` credentials and POSTed automatically by a one-shot `connector-registrar` container that waits on Debezium's healthcheck. This is what makes `docker compose up -d` alone sufficient - no manual `curl` step.
+* **Reconciliation over inference:** Rather than assuming CDC "just works" because Redpanda/ClickHouse report healthy, `cdc-monitor` (`src/cdc_monitor.py`) directly compares Postgres and ClickHouse row counts and measures freshness lag using Postgres's own `updated_at` timestamp carried through the pipeline - a stalled or lossy connector is caught even when every infrastructure metric looks fine.
 
 ## Future Scalability
 If deploying this to an Enterprise Cloud environment (e.g., GCP or AWS) at massive scale, the architecture would evolve to ensure maximum resilience and throughput:
@@ -42,7 +42,7 @@ If deploying this to an Enterprise Cloud environment (e.g., GCP or AWS) at massi
 ## Dataset & Domain Overview
 This platform ingests and processes live micro-finance loan data fetched directly from the **Kiva Public REST API** (`https://api.kivaws.org/v1/loans/search.json`).
 
-**Authentication:** none required. Kiva's `/v1/loans/search.json` endpoint is fully public and read-only — no API key, token, or account registration is needed. The only special handling required is a standard browser `User-Agent` header (see `src/ingest_api.py`), since Kiva's WAF blocks requests carrying the default Python `requests` signature.
+**Authentication:** none required. Kiva's `/v1/loans/search.json` endpoint is fully public and read-only - no API key, token, or account registration is needed. The only special handling required is a standard browser `User-Agent` header (see `src/ingest_api.py`), since Kiva's WAF blocks requests carrying the default Python `requests` signature.
 
 ### Why Kiva Data?
 Kiva is a global micro-lending platform that provides loan capital to entrepreneurs and small business owners in developing regions. This domain was chosen because Kiva's public API provides a useful real-world dataset for demonstrating CDC, data modeling, and analytics.
@@ -68,7 +68,7 @@ The pipeline ingests real-time transactional loan records with the following sch
 * Git
 * ~4 GB of free RAM for the container set
 
-### 1. Spin up the entire stack — one command
+### 1. Spin up the entire stack - one command
 ```bash
 cp .env.example .env   # optional: only needed if you want to override defaults
 docker compose up -d
@@ -96,7 +96,7 @@ Open your browser and navigate to **[http://localhost:3000](http://localhost:300
 4. Dagster runs `dbt run` to materialize the models in ClickHouse.
 5. Dagster runs `dbt test` to enforce data quality constraints (Unique IDs, Non-Null values, Accepted Statuses).
 
-It also runs unattended every 15 minutes (`*/15 * * * *`, defined in `dagster_orchestration/definitions.py`) once the Dagster container is up — frequent enough to keep the Kiva loan data close to real-time without hammering a free public API or forcing needlessly frequent full-refresh dbt rebuilds. The CDC path itself (Postgres → Debezium → Redpanda → ClickHouse) is already near-real-time independent of this schedule; the 15-minute cadence only controls how often we poll Kiva for new external data.
+It also runs unattended every 15 minutes (`*/15 * * * *`, defined in `dagster_orchestration/definitions.py`) once the Dagster container is up - frequent enough to keep the Kiva loan data close to real-time without hammering a free public API or forcing needlessly frequent full-refresh dbt rebuilds. The CDC path itself (Postgres → Debezium → Redpanda → ClickHouse) is already near-real-time independent of this schedule; the 15-minute cadence only controls how often we poll Kiva for new external data.
 
 ---
 
@@ -149,35 +149,35 @@ curl -s http://localhost:9200/metrics | grep -E "cdc_row_count_drift|cdc_replica
 
 | Service | URL | Credentials |
 |---|---|---|
-| Dagster (orchestration UI) | http://localhost:3000 | — |
+| Dagster (orchestration UI) | http://localhost:3000 | - |
 | Grafana (dashboards + alerts) | http://localhost:3001 | `admin` / `kiva` (see `.env`) |
-| Prometheus (raw metrics/targets) | http://localhost:9090 | — |
-| dbt-docs (lineage graph & catalog) | http://localhost:8085 | — |
-| Redpanda Console (topics/messages) | http://localhost:8080 | — |
-| Debezium UI (connector status) | http://localhost:8084 | — |
-| `cdc-monitor` raw metrics | http://localhost:9200/metrics | — |
+| Prometheus (raw metrics/targets) | http://localhost:9090 | - |
+| dbt-docs (lineage graph & catalog) | http://localhost:8085 | - |
+| Redpanda Console (topics/messages) | http://localhost:8080 | - |
+| Debezium UI (connector status) | http://localhost:8084 | - |
+| `cdc-monitor` raw metrics | http://localhost:9200/metrics | - |
 | PostgreSQL (OLTP) | `localhost:5433` | `kiva_admin` / `kiva_password`, db `kiva_oltp` (see `.env`) |
 | ClickHouse HTTP interface | http://localhost:8123 | `kiva_admin` / `kiva_password` |
 | ClickHouse native TCP (for `clickhouse-client`) | `localhost:9000` | `kiva_admin` / `kiva_password` |
-| Debezium Kafka Connect REST API | http://localhost:8083 | — |
+| Debezium Kafka Connect REST API | http://localhost:8083 | - |
 
-All default credentials live in [`.env.example`](./.env.example) — copy it to `.env` to override them.
+All default credentials live in [`.env.example`](./.env.example) - copy it to `.env` to override them.
 
 ---
 
 ## Observability & Business Dashboards
 * **Grafana Dashboards:** http://localhost:3001 (`admin` / `kiva`)
-  - **Kiva Microfinance Pipeline Observability:** operational metrics — Redpanda throughput, ClickHouse memory/queries/write ops, Postgres-vs-ClickHouse row reconciliation, CDC replication lag, Debezium connector state, Postgres exporter status.
+  - **Kiva Microfinance Pipeline Observability:** operational metrics - Redpanda throughput, ClickHouse memory/queries/write ops, Postgres-vs-ClickHouse row reconciliation, CDC replication lag, Debezium connector state, Postgres exporter status.
   - **Kiva Microfinance Executive Loan Analytics:** business intelligence & ML feature distributions querying the ClickHouse marts directly.
-* **Grafana Alerting:** http://localhost:3001/alerting/list — 4 provisioned rules (CDC row drift, CDC replication lag, Debezium connector down, ClickHouse ingestion stalled). See [`docs/observability.md`](./docs/observability.md) for the full design and rationale.
-* **Prometheus Targets:** http://localhost:9090/targets — `redpanda`, `clickhouse`, `postgres-exporter`, `cdc-monitor`.
+* **Grafana Alerting:** http://localhost:3001/alerting/list - 4 provisioned rules (CDC row drift, CDC replication lag, Debezium connector down, ClickHouse ingestion stalled). See [`docs/observability.md`](./docs/observability.md) for the full design and rationale.
+* **Prometheus Targets:** http://localhost:9090/targets - `redpanda`, `clickhouse`, `postgres-exporter`, `cdc-monitor`.
 
 ---
 
 ## CI/CD
 
-Defined in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), triggered on every push/PR to `main`/`master`. Three staged jobs — each gated on the previous one passing, so cheap/fast feedback happens before the expensive full-stack test runs:
+Defined in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), triggered on every push/PR to `main`/`master`. Three staged jobs - each gated on the previous one passing, so cheap/fast feedback happens before the expensive full-stack test runs:
 
-1. **Lint & Unit Test** — `flake8` (fails the build on syntax errors/undefined names; warns on style) + `pytest tests/` (ingestion logic and CDC-monitor drift/lag/connector-health calculations, all mocked — no live services required).
-2. **Docker Compose & dbt Validation** — `docker compose config` (catches YAML/interpolation errors) + `dbt parse` (catches dbt syntax/ref errors) as a fast smoke test.
-3. **End-to-End CDC + dbt Integration Test** — actually stands up Postgres, Redpanda, Debezium, ClickHouse, `cdc-monitor`, and `postgres-exporter`; auto-registers the Debezium connector; runs the real ingestion script against the live stack; polls ClickHouse until CDC-replicated rows are observed; runs `dbt run` and `dbt test` against the live warehouse; and checks that `cdc-monitor`'s `/metrics` endpoint is reporting real values. This is what catches a connector config or model that's syntactically valid but functionally broken — the previous version of this pipeline only ran `dbt parse`, which cannot catch that class of bug.
+1. **Lint & Unit Test** - `flake8` (fails the build on syntax errors/undefined names; warns on style) + `pytest tests/` (ingestion logic and CDC-monitor drift/lag/connector-health calculations, all mocked - no live services required).
+2. **Docker Compose & dbt Validation** - `docker compose config` (catches YAML/interpolation errors) + `dbt parse` (catches dbt syntax/ref errors) as a fast smoke test.
+3. **End-to-End CDC + dbt Integration Test** - actually stands up Postgres, Redpanda, Debezium, ClickHouse, `cdc-monitor`, and `postgres-exporter`; auto-registers the Debezium connector; runs the real ingestion script against the live stack; polls ClickHouse until CDC-replicated rows are observed; runs `dbt run` and `dbt test` against the live warehouse; and checks that `cdc-monitor`'s `/metrics` endpoint is reporting real values. This is what catches a connector config or model that's syntactically valid but functionally broken - the previous version of this pipeline only ran `dbt parse`, which cannot catch that class of bug.
