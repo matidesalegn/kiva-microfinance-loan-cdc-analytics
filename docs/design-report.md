@@ -1,4 +1,4 @@
-# Design Report — Kiva Microfinance Data Platform
+# Design Report - Kiva Microfinance Data Platform
 
 This is the design report: architecture, data flow, schema/ERD with
 ClickHouse-specific rationale, observability design, and a scaling plan. It is
@@ -8,8 +8,7 @@ meant to be read alongside [`README.md`](../README.md) (how to run it) and
 ## 1. Architecture
 
 `architecture.png` (repo root) shows the core data path. The diagram below is
-the current full stack, including the reliability/observability components
-added on top of the original brief (§6):
+the current full stack, including the reliability/observability components:
 
 ```mermaid
 flowchart LR
@@ -80,29 +79,29 @@ flowchart LR
 
 ## 2. Data Flow
 
-1. **Ingest** — `src/ingest_api.py` pulls funded Kiva loans from the public
+1. **Ingest** - `src/ingest_api.py` pulls funded Kiva loans from the public
    REST API and `UPSERT`s them into `raw_data.kiva_loans` in Postgres. Re-running
    it updates existing rows (status/funded_amount/updated_at), which is what
    gives CDC something to actually capture on subsequent runs, not just inserts.
-2. **Capture** — Debezium's PostgreSQL connector streams the logical
+2. **Capture** - Debezium's PostgreSQL connector streams the logical
    replication slot for `raw_data.kiva_loans` and publishes flattened
    before/after row images to the `cdc.raw_data.kiva_loans` topic on Redpanda.
    The connector is registered automatically at stack startup by the
-   `connector-registrar` one-shot container (see §7.1) — no manual `curl` step.
-3. **Land** — ClickHouse consumes the topic directly via a `Kafka`-engine
+   `connector-registrar` one-shot container - no manual `curl` step.
+3. **Land** - ClickHouse consumes the topic directly via a `Kafka`-engine
    table; a materialized view pushes every message into
    `raw_data.kiva_loans_raw`, a `ReplacingMergeTree` that collapses
    insert/update/delete events down to the latest row per `id`.
-4. **Transform** — dbt reads `kiva_loans_raw FINAL` (staging), applies business
+4. **Transform** - dbt reads `kiva_loans_raw FINAL` (staging), applies business
    logic (intermediate), and produces two marts: an aggregated BI mart and an
    ML feature-engineering mart.
-5. **Orchestrate** — a Dagster asset graph chains ingestion → (buffer for CDC
+5. **Orchestrate** - a Dagster asset graph chains ingestion → (buffer for CDC
    propagation) → `dbt run` → `dbt test`, scheduled every 15 minutes and
    runnable on demand from the Dagster UI. The 15-minute cadence governs only
    how often we poll Kiva for new external data; the CDC path itself
    (Postgres → Debezium → Redpanda → ClickHouse) is already near-real-time
    independent of this schedule.
-6. **Observe** — Prometheus scrapes ClickHouse, Redpanda, Postgres
+6. **Observe** - Prometheus scrapes ClickHouse, Redpanda, Postgres
    (via `postgres-exporter`) and the custom `cdc-monitor` exporter; Grafana
    visualizes it and evaluates alert rules on top.
 
@@ -110,7 +109,7 @@ flowchart LR
 
 ### 3.1 Layer lineage (ERD-style)
 
-Each layer is a 1:1 transformation of the same `loan` entity — there's no
+Each layer is a 1:1 transformation of the same `loan` entity - there's no
 multi-table join in this domain, so the diagram below shows *lineage and grain*
 rather than foreign keys, which is the more informative view for a
 staging→mart pipeline like this one.
@@ -174,13 +173,13 @@ erDiagram
 | Table | Engine | Order By | Partition By | Why |
 |---|---|---|---|---|
 | `raw_data.kiva_loans_raw` | `ReplacingMergeTree(_version)` | `(id)` | `toYYYYMM(posted_date)` | CDC streams inserts *and* updates as new rows; `ReplacingMergeTree` + a monotonic `_version` collapses them to the latest state per `id` without a manual dedup query. `ORDER BY (id)` matches the point-lookup/merge key. Partitioning by month bounds part count as volume grows and makes range-based backfill/TTL operations partition-scoped instead of full-table scans. |
-| `stg_kiva_loans` | view | — | — | Thin, cheap `SELECT ... FINAL` — materializing it would just duplicate storage for no query-time benefit at this volume, and `FINAL` is what guarantees "latest state only" semantics. |
-| `int_loans_enriched` | view | — | — | Same reasoning — it's pure business-logic (CASE/ROUND) over the staging view, cheap to compute on read. |
-| `mart_loans_by_sector` | `MergeTree()` | `(country, sector)` | *none (deliberate)* | Materialized as a table because dashboards hit it repeatedly. Grain is `(country, sector)` — a few hundred rows at most regardless of source volume — so ordering by the group-by keys speeds the (already tiny) scan, and partitioning would add part-management overhead with no pruning benefit on a table this small. |
-| `mart_loan_features_ml` | `MergeTree()` | `(loan_id)` | `toYYYYMM(posted_date)` | Row-per-loan feature store that grows with ingestion volume (unlike the sector mart), so it gets the same monthly partitioning as the raw table — this is what lets a future incremental/backfill strategy rebuild one month of features without touching the rest. |
+| `stg_kiva_loans` | view | - | - | Thin, cheap `SELECT ... FINAL` - materializing it would just duplicate storage for no query-time benefit at this volume, and `FINAL` is what guarantees "latest state only" semantics. |
+| `int_loans_enriched` | view | - | - | Same reasoning - it's pure business-logic (CASE/ROUND) over the staging view, cheap to compute on read. |
+| `mart_loans_by_sector` | `MergeTree()` | `(country, sector)` | *none (deliberate)* | Materialized as a table because dashboards hit it repeatedly. Grain is `(country, sector)` - a few hundred rows at most regardless of source volume - so ordering by the group-by keys speeds the (already tiny) scan, and partitioning would add part-management overhead with no pruning benefit on a table this small. |
+| `mart_loan_features_ml` | `MergeTree()` | `(loan_id)` | `toYYYYMM(posted_date)` | Row-per-loan feature store that grows with ingestion volume (unlike the sector mart), so it gets the same monthly partitioning as the raw table - this is what lets a future incremental/backfill strategy rebuild one month of features without touching the rest. |
 
 `kafka_kiva_loans_cdc` (the `Kafka`-engine table) is intentionally excluded
-from this table — it holds no data at rest, it is a consumer view over the
+from this table - it holds no data at rest, it is a consumer view over the
 Redpanda topic, so engine/partitioning concepts don't apply to it.
 
 ## 4. Observability Design
@@ -192,27 +191,27 @@ Full detail lives in [`observability.md`](./observability.md); summary:
   (`cdc-monitor`, purpose-built for this pipeline), Postgres health
   (`postgres-exporter`), and resource footprint (ClickHouse memory/queries).
 - **Tools**: Prometheus (pull-based scraping, zero external DB dependency) +
-  Grafana (dashboards *and* provisioned alert rules) — chosen over a SaaS
+  Grafana (dashboards *and* provisioned alert rules) - chosen over a SaaS
   APM because everything needed to run entirely inside `docker compose` with
   no external account/API key, so the stack stays a single, self-contained
   command.
 - **Alerting**: four Grafana-provisioned alert rules catch the failure modes
-  most specific to a CDC pipeline — connector down, replication lag, row-count
-  drift, and ingestion stalls — see §5.4 of `observability.md`.
+  most specific to a CDC pipeline - connector down, replication lag, row-count
+  drift, and ingestion stalls - see §5.4 of `observability.md`.
 
 ## 5. Scaling & Extension Plan
 
 The current build targets **demo scale**: hundreds of rows per ingestion run,
 single-node everything, resource-capped containers for a laptop. Below is what
-changes at each order of magnitude, and why — this is the "how would you scale
-this" answer, made concrete instead of abstract.
+changes at each order of magnitude, and why - the "how would you scale this"
+answer, made concrete instead of abstract.
 
 | Volume tier | What breaks first | What changes |
 |---|---|---|
-| **Current (~10²–10³ rows/day)** | Nothing — this is the tier the current build is tuned for. | — |
+| **Current (~10²–10³ rows/day)** | Nothing - this is the tier the current build is tuned for. | - |
 | **10⁴–10⁶ rows/day** (single growing source) | `dbt run` full-refresh table materializations for the marts get slower; `ReplacingMergeTree` merge overhead grows. | Switch marts to **incremental** dbt models (`is_incremental()` + `unique_key`); rely on the `toYYYYMM(posted_date)` partitioning already in place to scope merges/backfills to affected months only; add ClickHouse `TTL` on `kiva_loans_raw` to age out obsolete CDC versions. |
-| **10⁶–10⁸ rows/day / multiple OLTP sources** | Single Redpanda broker and single-node ClickHouse become the bottleneck; Debezium `tasks.max: 1` can't keep up with WAL volume. | Move to **Apache Kafka** with multiple partitions per topic (Redpanda was chosen here purely to avoid the JVM footprint on a laptop — see `README.md` → Design Decisions); scale Debezium connector tasks per table; move to a **ClickHouse cluster** (sharded + replicated) with `Distributed` engine tables; introduce a schema registry (Avro/Protobuf) instead of raw JSON to catch upstream schema drift before it reaches ClickHouse. |
-| **Enterprise / multi-team** | A single Dagster `dagster dev` process and a single `dbt` project become an operational and ownership bottleneck. | Migrate orchestration to **Apache Airflow** with dedicated executors (already the stated production target — see `README.md`); split the dbt project by domain with `dbt mesh`/multi-project `dbt-core` patterns; adopt **dbt Fusion** (Rust engine) for compile-time performance on a much larger DAG; add a proper data catalog / lineage tool (e.g. OpenLineage) since `cdc-monitor`'s reconciliation approach stops being sufficient once there are many source tables instead of one. |
+| **10⁶–10⁸ rows/day / multiple OLTP sources** | Single Redpanda broker and single-node ClickHouse become the bottleneck; Debezium `tasks.max: 1` can't keep up with WAL volume. | Move to **Apache Kafka** with multiple partitions per topic (Redpanda was chosen here purely to avoid the JVM footprint on a laptop - see `README.md` → Design Decisions); scale Debezium connector tasks per table; move to a **ClickHouse cluster** (sharded + replicated) with `Distributed` engine tables; introduce a schema registry (Avro/Protobuf) instead of raw JSON to catch upstream schema drift before it reaches ClickHouse. |
+| **Enterprise / multi-team** | A single Dagster `dagster dev` process and a single `dbt` project become an operational and ownership bottleneck. | Migrate orchestration to **Apache Airflow** with dedicated executors; split the dbt project by domain with `dbt mesh`/multi-project `dbt-core` patterns; adopt **dbt Fusion** (Rust engine) for compile-time performance on a much larger DAG; add a proper data catalog / lineage tool (e.g. OpenLineage) since `cdc-monitor`'s reconciliation approach stops being sufficient once there are many source tables instead of one. |
 
 ## 6. Production Hardening
 
@@ -223,13 +222,13 @@ than just a working demo:
 1. **True single-command startup.** The original design required a manual
    `curl` to register the Debezium connector after `docker compose up`. The
    `connector-registrar` service now does this automatically, idempotently,
-   and with credentials rendered from `.env` at boot time (not hardcoded) —
+   and with credentials rendered from `.env` at boot time (not hardcoded) -
    so `docker compose up -d` alone is sufficient.
 2. **Real CDC observability, not just infrastructure metrics.** Redpanda/
    ClickHouse "system is up" metrics don't answer "did every row actually
    arrive?". `cdc-monitor` (`src/cdc_monitor.py`) directly reconciles Postgres
    vs. ClickHouse row counts and measures true replication freshness lag by
-   carrying `updated_at` through the CDC pipeline — the kind of check a
+   carrying `updated_at` through the CDC pipeline - the kind of check a
    production on-call engineer actually needs, and unit-tested independently
    of any live service (`tests/test_cdc_monitor.py`).
 3. **Proactive alerting, not just dashboards.** Four Grafana alert rules
@@ -240,7 +239,7 @@ than just a working demo:
    and `dbt parse`, the CI pipeline now stands up the real Postgres → Debezium
    → Redpanda → ClickHouse chain, runs the actual ingestion script, waits for
    CDC replication to be observed, and runs `dbt run`/`dbt test` against a
-   live warehouse — so a model or connector config that's syntactically valid
+   live warehouse - so a model or connector config that's syntactically valid
    but functionally broken fails CI, not someone's laptop.
 5. **A pre-existing bug fixed along the way.** While wiring up the new alert
    rules, the Grafana ClickHouse datasource had no explicit `uid`, but the
