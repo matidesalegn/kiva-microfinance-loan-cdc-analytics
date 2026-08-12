@@ -54,15 +54,15 @@ def dbt_analytics_models(context: AssetExecutionContext):
     return "dbt models and tests completed successfully"
 
 # Define a job that executes the entire pipeline sequentially
-daily_pipeline_job = define_asset_job(name="end_to_end_pipeline", selection="*")
+pipeline_job = define_asset_job(name="end_to_end_pipeline", selection="*")
 
-# Schedule the job to run every day at midnight
-daily_schedule = ScheduleDefinition(
-    job=daily_pipeline_job,
-    cron_schedule="0 0 * * *"
+# Poll the Kiva API every 15 minutes so downstream analytics stay close to  real-time.  
+ingestion_schedule = ScheduleDefinition(
+    job=pipeline_job,
+    cron_schedule="*/15 * * * *"
 )
 
 defs = Definitions(
     assets=[ingest_kiva_api_to_postgres, dbt_analytics_models],
-    schedules=[daily_schedule]
+    schedules=[ingestion_schedule]
 )

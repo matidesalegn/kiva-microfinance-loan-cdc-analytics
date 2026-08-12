@@ -96,7 +96,7 @@ Open your browser and navigate to **[http://localhost:3000](http://localhost:300
 4. Dagster runs `dbt run` to materialize the models in ClickHouse.
 5. Dagster runs `dbt test` to enforce data quality constraints (Unique IDs, Non-Null values, Accepted Statuses).
 
-It also runs unattended on a daily schedule (`0 0 * * *`, defined in `dagster_orchestration/definitions.py`) once the Dagster container is up.
+It also runs unattended every 15 minutes (`*/15 * * * *`, defined in `dagster_orchestration/definitions.py`) once the Dagster container is up — frequent enough to keep the Kiva loan data close to real-time without hammering a free public API or forcing needlessly frequent full-refresh dbt rebuilds. The CDC path itself (Postgres → Debezium → Redpanda → ClickHouse) is already near-real-time independent of this schedule; the 15-minute cadence only controls how often we poll Kiva for new external data.
 
 ---
 

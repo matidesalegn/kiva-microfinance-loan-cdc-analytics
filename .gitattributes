@@ -1,0 +1,3 @@
+# Normalize all repo text files to LF on checkout to avoid CRLF (Windows) causing container/busybox scripts or config parsers to fail.
+
+* text=auto eol=lf
