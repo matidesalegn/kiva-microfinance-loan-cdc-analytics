@@ -252,3 +252,56 @@ than just a working demo:
 6. **Browsable dbt documentation.** `dbt-docs` is served on
    `http://localhost:8085`, giving readers an interactive lineage graph and
    column-level catalog instead of only static markdown.
+7. **Grafana OOM fixed at the root cause, not papered over -- including a
+   regression caught and fixed in the same investigation.** After adding
+   unified alerting, Grafana started getting silently killed by Docker
+   roughly 10-15 minutes after boot. `docker inspect --format
+   '{{.State.OOMKilled}}'` confirmed it: `true`, exit code 137. The 256M
+   memory limit was sized for a dashboards-only Grafana; alerting's
+   `ngalert` scheduler/state manager and the bleve search indices it builds
+   for dashboards/folders/rules raised the permanent baseline. Root cause was
+   two-fold: (1) Grafana >=11.5 auto-installs several unrelated bundled app
+   plugins (`elasticsearch`, `grafana-lokiexplore-app`,
+   `grafana-metricsdrilldown-app`, `grafana-pyroscope-app`,
+   `grafana-exploretraces-app`) on every boot by default, each running as its
+   own backend subprocess, for a stack that only uses Prometheus and
+   ClickHouse; and (2) the memory limit itself hadn't been re-sized after
+   alerting was added.
+   First fix attempt: `GF_PLUGINS_PREINSTALL_DISABLED=true`. This turned out
+   to be a global kill switch, not a "defaults only" toggle -- verified
+   empirically (not assumed from docs) against a throwaway container that it
+   also silently blocks any plugin requested via `GF_INSTALL_PLUGINS` or
+   `GF_PLUGINS_PREINSTALL`, which broke the ClickHouse datasource plugin
+   ("Plugin not found, no installed plugin with that id" in the UI). Also
+   verified empirically that `GF_PLUGINS_PREINSTALL=<plugin>` on its own
+   doesn't replace Grafana's default list either -- it merges with it, so
+   there is no single env var that installs only the one plugin this project
+   needs. The actual fix: a `grafana-plugin-installer` one-shot init service
+   (same pattern as `connector-registrar`) that runs
+   `grafana cli plugins install vertamedia-clickhouse-datasource` directly
+   against the shared `grafana_data` volume -- a separate code path that
+   bypasses the default-list merge entirely -- and the main `grafana` service
+   still sets `GF_PLUGINS_PREINSTALL_DISABLED=true`, which is now safe since
+   the one plugin it needs is already on disk before it boots. Memory limit
+   raised to 512M to match the (now much smaller) real working set. Verified
+   stable over two separate 20-minute soak tests: one that exposed the
+   plugin-install regression, and one confirming the corrected fix.
+8. **Alerting proven with real email delivery, not just "rules exist."** The
+   4 alert rules were previously visible only in Grafana's UI, with no
+   contact point wired up (`docs/observability.md` even said so explicitly).
+   Added a `mailpit` service as a local SMTP relay and provisioned a real
+   contact point + notification policy as code
+   (`config/grafana/provisioning/alerting/contact-points.yml`,
+   `notification-policies.yml`) instead of leaving that as UI-only manual
+   setup. Verified with a real fault injection, not a synthetic test button:
+   `docker stop kiva_debezium` was used to genuinely break the
+   connector, and the full pipeline was observed end-to-end --
+   `debezium_connector_state` metric flipping to `0` within one
+   `cdc-monitor` poll cycle, the rule transitioning `inactive` -> `pending`
+   -> `firing` on schedule, a `[FIRING:1] Debezium connector is not RUNNING`
+   email landing in Mailpit with correct sender/recipient/body, and, after
+   `docker start kiva_debezium`, a `[RESOLVED]` email arriving once the
+   notification policy's `group_interval` (5m) elapsed. The same fault also
+   organically triggered the CDC replication-lag alert (a real consequence
+   of no fresh data flowing during the outage), confirming that alert too --
+   cleared by re-running the ingestion script.

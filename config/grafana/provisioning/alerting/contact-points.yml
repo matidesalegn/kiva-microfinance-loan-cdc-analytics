@@ -1,0 +1,12 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Matiwos Desalegn
+    receivers:
+      - uid: dfuvdec03lekgb
+        type: email
+        settings:
+          addresses: mathiwossilvio@gmail.com
+          singleEmail: false
+        disableResolveMessage: false
