@@ -97,8 +97,11 @@ flowchart LR
    logic (intermediate), and produces two marts: an aggregated BI mart and an
    ML feature-engineering mart.
 5. **Orchestrate** — a Dagster asset graph chains ingestion → (buffer for CDC
-   propagation) → `dbt run` → `dbt test`, scheduled daily and runnable on
-   demand from the Dagster UI.
+   propagation) → `dbt run` → `dbt test`, scheduled every 15 minutes and
+   runnable on demand from the Dagster UI. The 15-minute cadence governs only
+   how often we poll Kiva for new external data; the CDC path itself
+   (Postgres → Debezium → Redpanda → ClickHouse) is already near-real-time
+   independent of this schedule.
 6. **Observe** — Prometheus scrapes ClickHouse, Redpanda, Postgres
    (via `postgres-exporter`) and the custom `cdc-monitor` exporter; Grafana
    visualizes it and evaluates alert rules on top.
