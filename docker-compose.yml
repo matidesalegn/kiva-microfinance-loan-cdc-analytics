@@ -84,8 +84,14 @@ services:
       VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       KEY_CONVERTER_SCHEMAS_ENABLE: "false"
       VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      # Enable the Jolokia JMX-over-HTTP agent (bundled in the Debezium image)
+      # so the Debezium UI Metrics panel can reach http://debezium:8778/jolokia.
+      # The entrypoint checks ENABLE_JOLOKIA (not ENABLE_JMX_AGENT) to attach
+      # the jolokia-jvm-*.jar as a javaagent on port 8778.
+      ENABLE_JOLOKIA: "true"
     ports:
       - "8083:8083"
+      - "8778:8778"   # Jolokia HTTP/JMX bridge for Debezium UI Metrics panel
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,12 +101,13 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8083/"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 90s
+      retries: 15
+      start_period: 120s
     deploy:
       resources:
         limits:
-          memory: 512M
+          # Raised from 512M: Kafka Connect JVM baseline (~350-450M) + Jolokia. 512M, causing OOM kills before port 8083 ever binds.
+          memory: 1G
 
   # ----------------------------------------------------
   # 3b. CDC Connector Auto-Registration (one-shot init job)
@@ -224,7 +231,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          # Raised from 512M: dagster dev (webserver + daemon) + multiprocess
+          # executor workers + pip install all run concurrently and easily
+          # exceed 512M, causing OOM kills (container exits with OOMKilled=true).
+          memory: 1500M
 
   # ----------------------------------------------------
   # 6b. CDC Reconciliation & Lag Monitor
