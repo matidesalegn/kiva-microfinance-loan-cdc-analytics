@@ -17,6 +17,4 @@ models:
       +tags: ["hourly", "business_logic"]
     marts:
       +materialized: table
-      +engine: MergeTree()
-      +order_by: loan_id
       +tags: ["daily", "reporting"]
