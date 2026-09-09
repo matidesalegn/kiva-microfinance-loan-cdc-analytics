@@ -213,8 +213,8 @@ services:
     command: >
       sh -c "pip install -r src/requirements.txt && mkdir -p $$DAGSTER_HOME;
       (sleep 5;
-      dagster schedule start end_to_end_pipeline_schedule -f dagster_orchestration/definitions.py || true;
-      dagster job execute -f dagster_orchestration/definitions.py -j end_to_end_pipeline || true) &
+      dagster job execute -f dagster_orchestration/definitions.py -j end_to_end_pipeline || true;
+      dagster schedule start end_to_end_pipeline_schedule -f dagster_orchestration/definitions.py || true) &
       dagster dev -h 0.0.0.0 -p 3000 -f dagster_orchestration/definitions.py"
     ports:
       - "3000:3000"
