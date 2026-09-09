@@ -42,14 +42,18 @@ def dbt_analytics_models(context: AssetExecutionContext):
     run_result = subprocess.run(["dbt", "run"], cwd=dbt_dir, capture_output=True, text=True)
     context.log.info(run_result.stdout)
     if run_result.returncode != 0:
-        raise Exception(f"dbt run failed: {run_result.stderr}")
+        error_msg = run_result.stderr.strip() or run_result.stdout.strip()
+        context.log.error(f"dbt run output:\n{run_result.stdout}")
+        raise Exception(f"dbt run failed:\n{error_msg}")
     
     # 2. Run dbt tests (Data Quality Validation)
     context.log.info("Running dbt data quality tests...")
     test_result = subprocess.run(["dbt", "test"], cwd=dbt_dir, capture_output=True, text=True)
     context.log.info(test_result.stdout)
     if test_result.returncode != 0:
-        raise Exception(f"dbt test failed: {test_result.stderr}")
+        error_msg = test_result.stderr.strip() or test_result.stdout.strip()
+        context.log.error(f"dbt test output:\n{test_result.stdout}")
+        raise Exception(f"dbt test failed:\n{error_msg}")
         
     return "dbt models and tests completed successfully"
 
