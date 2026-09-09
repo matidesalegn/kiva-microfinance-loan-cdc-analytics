@@ -22,6 +22,18 @@
     "liveNow": false,
     "panels": [
         {
+            "id": 6,
+            "title": "Executive Analytics Overview",
+            "type": "text",
+            "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+            "pluginVersion": "13.0.2",
+            "options": {
+                "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false },
+                "content": "## Kiva Microfinance Executive Loan Analytics Dashboard\n\nThis executive dashboard provides strategic portfolio intelligence, loan disbursement metrics, and demographic capital allocation across micro-entrepreneur lending programs powered by ClickHouse OLAP and dbt transformations.\n\n#### Key Analytical Scopes:\n- **Portfolio Health & Capital Volume**: Live tracking of total capital disbursed, portfolio-wide funding fulfillment rate, and unique micro-entrepreneurs supported.\n- **Sectoral Exposure**: Breakdown of loan funding volume across key industries (Agriculture, Retail, Food, Services, etc.) to evaluate capital allocation.\n- **Geographical Footprint**: Country-level capital distribution identifying high-impact lending regions across East African corridors (Rwanda, Kenya, Uganda, etc.).*",
+                "mode": "markdown"
+            }
+        },
+        {
             "datasource": {
                 "type": "vertamedia-clickhouse-datasource",
                 "uid": "clickhouse"
@@ -47,7 +59,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 0,
-                "y": 0
+                "y": 8
             },
             "id": 1,
             "options": {
@@ -109,7 +121,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 8,
-                "y": 0
+                "y": 8
             },
             "id": 2,
             "options": {
@@ -170,7 +182,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 16,
-                "y": 0
+                "y": 8
             },
             "id": 3,
             "options": {
@@ -223,7 +235,7 @@
                 "h": 10,
                 "w": 12,
                 "x": 0,
-                "y": 6
+                "y": 14
             },
             "id": 4,
             "options": {
@@ -272,7 +284,7 @@
                 "h": 10,
                 "w": 12,
                 "x": 12,
-                "y": 6
+                "y": 14
             },
             "id": 5,
             "options": {
@@ -325,5 +337,5 @@
     "timezone": "browser",
     "title": "Kiva Microfinance Executive Loan Analytics",
     "uid": "exec_analytics",
-    "version": 4
+    "version": 5
 }
