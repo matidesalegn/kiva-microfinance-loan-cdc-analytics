@@ -4,14 +4,7 @@ CREATE DATABASE IF NOT EXISTS raw_data;
 -- `updated_at` is carried through even though it isn't used by any dbt model,
 -- because it is what lets cdc-monitor compute a real, row-level CDC freshness
 -- lag (now() - max(source_updated_at)) instead of a synthetic sleep/heuristic.
--- posted_date/updated_at are declared Nullable(Int64), NOT String or DateTime:
--- with schemas disabled, Debezium's default time.precision.mode encodes
--- Postgres TIMESTAMP columns as raw microseconds-since-epoch JSON integers
--- (e.g. 1786453340000000), never an ISO date string. Declaring them String
--- and casting with toDateTimeOrNull() -- the naive approach -- doesn't error
--- on this; it silently clamps every row to ClickHouse's DateTime32 max
--- (2106-02-07 06:28:15), corrupting every date-derived column downstream.
--- fromUnixTimestamp64Micro() below is the correct decode.
+-- posted_date/updated_at are declared Nullable(Int64), NOT String or DateTime.
 CREATE TABLE IF NOT EXISTS raw_data.kafka_kiva_loans_cdc (
     id Int64,
     name String,
