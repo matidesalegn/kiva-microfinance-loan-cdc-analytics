@@ -1,4 +1,4 @@
-# Kiva Microfinance Data Platform
+# Kiva Microfinance Loan CDC Analytics
 
 ## Architecture Overview
 This repository contains a production-grade, end-to-end data analytics platform for Kiva's public loan data. 
@@ -15,7 +15,7 @@ The architecture simulates a modern, resilient, and highly scalable data stack c
 7. **Observability:** **Prometheus & Grafana**, scraping Redpanda, ClickHouse, Postgres (`postgres-exporter`), and a custom **`cdc-monitor`** exporter that reconciles Postgres/ClickHouse row counts and measures real CDC replication lag - plus 4 provisioned Grafana alert rules.
 
 ### Architecture Flow
-![Kiva Microfinance Data Platform Architecture](./architecture.png)
+![ Architecture](./architecture.png)
 
 The diagram above shows the core data path. See [`docs/design-report.md`](./docs/design-report.md) for the full current-state architecture diagram (including the observability/reliability additions), the ERD/schema documentation with ClickHouse design rationale, and the scaling plan.
 
