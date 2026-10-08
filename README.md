@@ -1,15 +1,15 @@
-# Kiva Microfinance Loan CDC Analytics
+# Kiva Loan CDC Analytics
+
+An independent portfolio project using publicly available data from Kiva's REST API. It demonstrates a streaming analytics pipeline built with PostgreSQL, Debezium, Redpanda, ClickHouse, dbt, and Dagster. This project is not affiliated with or endorsed by Kiva.
 
 ## Architecture Overview
-This repository contains a production-grade, end-to-end data analytics platform designed for the Kiva Microfinance setup. 
-
-The architecture simulates a modern, resilient, and highly scalable data stack capable of handling real-time streaming and massive analytical workloads, while being extremely conscious of hardware resource limitations.
+The pipeline ingests public loan data, captures database changes, and transforms them into analytical models. The stack is designed to run locally with Docker Compose.
 
 ### The Stack:
 1. **Ingestion (Source):** Python REST API Ingestion into **PostgreSQL** (OLTP).
 2. **Change Data Capture (CDC):** **Debezium** tracking logical replication slots in Postgres, auto-registered at startup by a `connector-registrar` init container.
-3. **Event Stream:** **Redpanda** (A lightweight, C++ Kafka alternative requiring zero JVM overhead).
-4. **Data Warehouse (OLAP):** **ClickHouse**, utilizing native Kafka-engine ingestion to sink messages instantly without a dedicated connector service.
+3. **Event Stream:** **Redpanda**, a Kafka-compatible event streaming platform.
+4. **Data Warehouse (OLAP):** **ClickHouse**, using its Kafka engine to consume the stream without a separate ingestion connector.
 5. **Transformation & Data Quality:** **dbt (Data Build Tool)** executing SQL transformations and data quality tests directly inside ClickHouse, docs served live via **dbt-docs**.
 6. **Orchestration:** **Dagster** orchestrating the entire lineage from API fetch -> CDC Buffer -> dbt Run -> dbt Test.
 7. **Observability:** **Prometheus & Grafana**, scraping Redpanda, ClickHouse, Postgres (`postgres-exporter`), and a custom **`cdc-monitor`** exporter that reconciles Postgres/ClickHouse row counts and measures real CDC replication lag - plus 4 provisioned Grafana alert rules.
@@ -23,19 +23,13 @@ The diagram above shows the core data path. See [`docs/design-report.md`](./docs
 
 ## Design Decisions
 
-* **Redpanda over Kafka:** Kafka requires Zookeeper (or KRaft) and a massive JVM memory footprint. Redpanda is a C++ Kafka-compatible binary that runs in a fraction of the memory, avoiding local machine crashes during testing.
-* **ClickHouse over Postgres for Analytics:** Postgres is excellent for OLTP, but ClickHouse is a columnar analytical engine capable of processing billions of rows per second. By separating OLTP and OLAP, the architecture guarantees production stability.
-* **ClickHouse `FINAL` modifier for CDC:** Instead of complex SQL deduplication logic, the dbt staging model leverages ClickHouse's `ReplacingMergeTree` and `FINAL` modifier to instantly collapse CDC event history into the absolute latest state.
-* **Dagster over Airflow (For Local Development):** Airflow relies on a webserver, scheduler, and worker (often requiring multiple gigabytes of RAM). I moved to Dagster solely to run this project efficiently on limited local hardware. However, for an enterprise-grade orchestrator in a production environment, I would definitely go with **Apache Airflow**.
-* **Docker Compose Healthchecks & Network Isolation:** Every container implements strict health checks and startup sequencing, mitigating race conditions during localized deployment.
+* **Redpanda for local development:** Its Kafka-compatible API supports this project’s event-streaming needs in the local Docker Compose environment.
+* **ClickHouse for analytics:** PostgreSQL handles transactional ingestion while ClickHouse serves analytical queries, keeping the two workloads separate.
+* **ClickHouse `FINAL` modifier for CDC:** The dbt staging model uses `ReplacingMergeTree` and `FINAL` to select the latest version of each loan after CDC events are ingested.
+* **Dagster for orchestration:** Dagster coordinates ingestion and dbt jobs in the local stack.
+* **Docker Compose health checks and network isolation:** Service health checks and startup dependencies help coordinate local startup.
 * **Auto-Registered CDC Connector:** The Debezium connector config is a template rendered from `.env` credentials and POSTed automatically by a one-shot `connector-registrar` container that waits on Debezium's healthcheck. This is what makes `docker compose up -d` alone sufficient - no manual `curl` step.
 * **Reconciliation over inference:** Rather than assuming CDC "just works" because Redpanda/ClickHouse report healthy, `cdc-monitor` (`src/cdc_monitor.py`) directly compares Postgres and ClickHouse row counts and measures freshness lag using Postgres's own `updated_at` timestamp carried through the pipeline - a stalled or lossy connector is caught even when every infrastructure metric looks fine.
-
-## Future Scalability
-If deploying this to an Enterprise Cloud environment (e.g., GCP or AWS) at massive scale, the architecture would evolve to ensure maximum resilience and throughput:
-1. **Enterprise Orchestration with Airflow:** While Dagster was used locally to bypass hardware constraints, I would absolutely migrate to **Apache Airflow** for the enterprise-grade orchestrator. Its distributed executors and massive community ecosystem make it the undisputed choice for scaling production pipelines.
-2. **Replacing Redpanda with Apache Kafka:** Redpanda was utilized for this local setup to bypass JVM constraints, but considering the overload and stability requirements of a true production environment, I will use **Apache Kafka** in place of Redpanda. Kafka remains the battle-tested, enterprise standard for streaming data at immense scale.
-3. **dbt Fusion (Rust Engine):** Upgrading the transformation layer from the legacy Python-based `dbt-core` to the new Rust-based **dbt Fusion** execution engine. This would massively reduce DAG compilation times and memory overhead for projects with thousands of models.
 
 ---
 
@@ -45,10 +39,10 @@ This platform ingests and processes live micro-finance loan data fetched directl
 **Authentication:** none required. Kiva's `/v1/loans/search.json` endpoint is fully public and read-only - no API key, token, or account registration is needed. The only special handling required is a standard browser `User-Agent` header (see `src/ingest_api.py`), since Kiva's WAF blocks requests carrying the default Python `requests` signature.
 
 ### Why Kiva Data?
-Kiva is a global micro-lending platform that provides loan capital to entrepreneurs and small business owners in developing regions. This domain was chosen because Kiva's public API provides a useful real-world dataset for demonstrating CDC, data modeling, and analytics.
+Kiva's public API provides a useful real-world dataset for demonstrating CDC, data modeling, and analytics. The project uses the API as an independent technical demonstration and does not imply a partnership with Kiva.
 
 ### Schema & Core Attributes:
-The pipeline ingests real-time transactional loan records with the following schema:
+The pipeline ingests loan data with the following schema:
 * `id` (BigInt): Unique loan identifier (Primary Key for CDC deduplication).
 * `name` (String): Name of the entrepreneur or borrowing group.
 * `status` (String): Current loan funding state (e.g., `funded`).
