@@ -177,3 +177,9 @@ Defined in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), triggered o
 1. **Lint & Unit Test** - `flake8` (fails the build on syntax errors/undefined names; warns on style) + `pytest tests/` (ingestion logic and CDC-monitor drift/lag/connector-health calculations, all mocked - no live services required).
 2. **Docker Compose & dbt Validation** - `docker compose config` (catches YAML/interpolation errors) + `dbt parse` (catches dbt syntax/ref errors) as a fast smoke test.
 3. **End-to-End CDC + dbt Integration Test** - actually stands up Postgres, Redpanda, Debezium, ClickHouse, `cdc-monitor`, and `postgres-exporter`; auto-registers the Debezium connector; runs the real ingestion script against the live stack; polls ClickHouse until CDC-replicated rows are observed; runs `dbt run` and `dbt test` against the live warehouse; and checks that `cdc-monitor`'s `/metrics` endpoint is reporting real values. This is what catches a connector config or model that's syntactically valid but functionally broken - the previous version of this pipeline only ran `dbt parse`, which cannot catch that class of bug.
+
+---
+
+## License
+
+Released under the [MIT License](./LICENSE). Copyright (c) 2026 Matiwos Desalegn.
