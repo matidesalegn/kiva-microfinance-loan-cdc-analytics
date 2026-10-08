@@ -1,7 +1,7 @@
 # Kiva Microfinance Loan CDC Analytics
 
 ## Architecture Overview
-This repository contains a production-grade, end-to-end data analytics platform for Kiva's public loan data. 
+This repository contains a production-grade, end-to-end data analytics platform designed for the Kiva Microfinance setup. 
 
 The architecture simulates a modern, resilient, and highly scalable data stack capable of handling real-time streaming and massive analytical workloads, while being extremely conscious of hardware resource limitations.
 
