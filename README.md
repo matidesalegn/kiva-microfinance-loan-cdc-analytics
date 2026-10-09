@@ -21,6 +21,11 @@ The diagram above shows the core data path. See [`docs/design-report.md`](./docs
 
 ---
 
+## Documentation
+Every design document, indexed by the question it answers: [`docs/README.md`](./docs/README.md). It includes the [requirements](./docs/requirements.md), a [data catalogue](./docs/data_catalog.md) of every table, column and monitoring metric, and the [naming conventions](./docs/naming_conventions.md).
+
+---
+
 ## Design Decisions
 
 * **Redpanda for local development:** Its Kafka-compatible API supports this project’s event-streaming needs in the local Docker Compose environment.
